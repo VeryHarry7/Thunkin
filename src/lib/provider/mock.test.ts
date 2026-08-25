@@ -75,7 +75,7 @@ describe("mock provider lifecycle", () => {
     const result = await mockProvider.result("mock/test", requestId, KEY);
 
     expect(result.outputs).toHaveLength(1);
-    expect(result.outputs[0]!.url).toBe("/fixtures/mock-image.svg");
+    expect(result.outputs[0]!.url).toBe("/fixtures/mock-image.png");
     expect(result.seed).toBeTypeOf("number");
   });
 

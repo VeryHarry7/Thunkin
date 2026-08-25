@@ -1,7 +1,7 @@
 import type { IngestPort, KeyResolver, LookResolver } from "./types";
-import { seedRegistry } from "./dev/seed-registry";
+import { registry } from "@/lib/models/registry";
 import { devKeyResolver } from "./dev/dev-key-resolver";
-import { noopIngest } from "./dev/noop-ingest";
+import { assetIngest } from "@/lib/assets/ingest";
 
 export * from "./types";
 
@@ -20,9 +20,9 @@ export * from "./types";
  * accessors so there is a single place to audit what is wired.
  */
 
-let lookResolver: LookResolver = seedRegistry;
+let lookResolver: LookResolver = registry;
 let keyResolver: KeyResolver = devKeyResolver;
-let ingestPort: IngestPort = noopIngest;
+let ingestPort: IngestPort = assetIngest;
 
 export function getLookResolver(): LookResolver {
   return lookResolver;
@@ -48,10 +48,9 @@ export function setPortsForTesting(ports: {
 }
 
 export function resetPorts(): void {
-  lookResolver = seedRegistry;
+  lookResolver = registry;
   keyResolver = devKeyResolver;
-  ingestPort = noopIngest;
+  ingestPort = assetIngest;
 }
 
-export { seedRegistry, devKeyResolver, noopIngest };
-export { SEED_LOOK_LIST } from "./dev/seed-registry";
+export { devKeyResolver };

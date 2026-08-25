@@ -8,8 +8,9 @@
  *
  *   sessions            → AGENT-03 (Key Vault)
  *   jobs, job_events    → AGENT-04 (Generation Core)   ✓ landed
- *   assets              → AGENT-05 (Asset Pipeline)
+ *   assets              → AGENT-05 (Asset Pipeline)    ✓ landed
  *   shares              → AGENT-08 (Library & Share)
  */
 
 export * from "./tables/jobs";
+export * from "./tables/assets";

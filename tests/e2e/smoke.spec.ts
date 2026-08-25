@@ -1,27 +1,42 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * Wave 0 smoke. Proves the app boots, renders, and resolves its env contract
- * on every device profile. AGENT-06 and AGENT-09 replace this with real
- * journeys through the core loop.
+ * Runs on every viewport in the matrix. These are the assertions that only a
+ * real device width can make.
  */
-test("the app boots and renders the placeholder", async ({ page }) => {
-  await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "Thunkin" })).toBeVisible();
+const PAGES = ["/", "/studio"];
 
-  // The env contract resolved and the provider is mocked — no billable call
-  // can happen during a test run.
-  await expect(page.getByText("provider: mock")).toBeVisible();
-});
+for (const path of PAGES) {
+  test(`${path} renders`, async ({ page }) => {
+    await page.goto(path);
+    await expect(page.getByText("Thunkin").first()).toBeVisible();
+  });
 
-test("the page never scrolls sideways", async ({ page }) => {
-  await page.goto("/");
+  test(`${path} never scrolls sideways`, async ({ page }) => {
+    await page.goto(path);
+    // Measure settled layout: a font swapping in changes text metrics, and a
+    // mid-swap frame is not what a person ever sees.
+    await page.evaluate(() => document.fonts.ready);
 
-  // A promise the whole product makes, so it is worth asserting from day one
-  // on every viewport in the matrix rather than discovering it on a phone.
-  const overflows = await page.evaluate(
-    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
-  );
-  expect(overflows).toBe(false);
+    /*
+     * A promise the whole product makes, and one that has already been broken
+     * once: flex children inside a grid default to min-content width, so a long
+     * chip or a look card silently forces the page open. Worth asserting on
+     * every viewport rather than trusting a desktop eyeball.
+     */
+    const overflows = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    );
+    expect(overflows, `${path} overflows horizontally`).toBe(false);
+  });
+}
+
+test("the studio offers looks and a way to generate", async ({ page }) => {
+  await page.goto("/studio");
+
+  await expect(page.getByRole("radio", { name: /quick sketch/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Generate" })).toBeVisible();
+  // Disabled with a stated reason, never a dead end.
+  await expect(page.getByText("Describe something first")).toBeVisible();
 });

@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import type { Server } from "node:http";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
@@ -56,8 +57,11 @@ export function pushSchema(): void {
 
 export async function truncateAll(): Promise<void> {
   const db = getDb();
-  // job_events cascades from jobs, but naming both is explicit and order-proof.
-  await db.execute(sql`TRUNCATE TABLE job_events, jobs RESTART IDENTITY CASCADE`);
+  // Naming every table explicitly rather than relying on the cascade — it is
+  // order-proof, and it keeps Postgres from emitting a NOTICE per test.
+  await db.execute(
+    sql`TRUNCATE TABLE assets, job_events, jobs RESTART IDENTITY CASCADE`,
+  );
 }
 
 export async function closeDb(): Promise<void> {
@@ -65,4 +69,66 @@ export async function closeDb(): Promise<void> {
     await client.end({ timeout: 5 });
     client = null;
   }
+}
+
+/* ======================================================================
+ * Fixture server
+ *
+ * The mock provider returns app-relative result URLs, and ingest resolves
+ * them against PUBLIC_URL and fetches them over HTTP. Serving `public/` here
+ * means the integration tests exercise the real download-and-store path
+ * rather than a stub — which is the only way the size caps, mime allowlist
+ * and derivative generation get tested at all.
+ * =================================================================== */
+
+const FIXTURE_PORT = 4599;
+let fixtureServer: Server | null = null;
+
+export async function startFixtureServer(): Promise<void> {
+  if (fixtureServer) return;
+
+  const { createServer } = await import("node:http");
+  const { readFile } = await import("node:fs/promises");
+  const { join, normalize } = await import("node:path");
+
+  const root = join(process.cwd(), "public");
+
+  const server = createServer((req, res) => {
+    void (async () => {
+      const path = normalize(decodeURIComponent((req.url ?? "/").split("?")[0]!));
+      // Never let a crafted path escape public/.
+      if (path.includes("..")) {
+        res.writeHead(400).end();
+        return;
+      }
+
+      try {
+        const body = await readFile(join(root, path));
+        const mime = path.endsWith(".png")
+          ? "image/png"
+          : path.endsWith(".svg")
+            ? "image/svg+xml"
+            : "application/octet-stream";
+        res.writeHead(200, {
+          "Content-Type": mime,
+          "Content-Length": String(body.byteLength),
+        });
+        res.end(body);
+      } catch {
+        res.writeHead(404).end();
+      }
+    })();
+  });
+
+  await new Promise<void>((resolve) =>
+    server.listen(FIXTURE_PORT, "127.0.0.1", resolve),
+  );
+  fixtureServer = server;
+}
+
+export async function stopFixtureServer(): Promise<void> {
+  if (!fixtureServer) return;
+  const server = fixtureServer;
+  fixtureServer = null;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
 }

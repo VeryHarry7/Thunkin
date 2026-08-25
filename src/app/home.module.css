@@ -1,0 +1,141 @@
+/*
+ * The landing page.
+ *
+ * The hero *is* the output. A wall of generated frames behind a single line of
+ * type, with one way in. Every marketing instinct here is wrong: if a visitor
+ * has to read a value proposition, the pictures were not convincing enough.
+ */
+
+.page {
+  position: relative;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: var(--s-6) var(--s-4);
+}
+
+/* The wall sits behind everything, dimmed hard so type stays readable. */
+.wall {
+  position: absolute;
+  inset: -8%;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--s-3);
+  /* The output is the interface: dim enough that type reads, bright enough
+     that you can actually see what the product makes. */
+  opacity: 0.72;
+  filter: saturate(1.1);
+  pointer-events: none;
+}
+
+@media (min-width: 700px) {
+  .wall {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.wallItem {
+  position: relative;
+  border-radius: var(--r-3);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.wallItem img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Drifts slowly upward. Ambient, not attention-seeking — and gone entirely
+   under prefers-reduced-motion via the global rule in tokens.css. */
+.drift {
+  animation: drift 38s linear infinite alternate;
+}
+
+.driftSlow {
+  animation: drift 52s linear infinite alternate-reverse;
+}
+
+@keyframes drift {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-6%);
+  }
+}
+
+/* A vignette so the centre is calm enough to hold type. */
+.veil {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 70% 55% at center,
+    color-mix(in srgb, var(--surface-0) 82%, transparent) 0%,
+    color-mix(in srgb, var(--surface-0) 40%, transparent) 55%,
+    color-mix(in srgb, var(--surface-0) 88%, transparent) 100%
+  );
+  pointer-events: none;
+}
+
+.content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-4);
+  text-align: center;
+  max-width: 30rem;
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-size: var(--t-sm);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.title {
+  font-size: clamp(2.5rem, 9vw, 4.5rem);
+  letter-spacing: -0.055em;
+  line-height: 0.95;
+  text-wrap: balance;
+}
+
+.sub {
+  color: var(--ink-dim);
+  font-size: var(--t-lg);
+  text-wrap: balance;
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 52px;
+  padding: 0 var(--s-6);
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: var(--t-lg);
+  font-weight: 600;
+  transition: background var(--d-1) var(--ease);
+}
+
+.cta:hover {
+  background: var(--accent-hot);
+}
+
+.cta:active {
+  animation: thunkin-press var(--d-2) var(--ease-spring);
+}
+
+.footnote {
+  font-size: var(--t-xs);
+  color: var(--ink-faint);
+}

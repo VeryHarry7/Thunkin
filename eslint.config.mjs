@@ -50,6 +50,12 @@ export default tseslint.config(
     },
   },
 
+  // Build scripts are CLIs; printing what they produced is the point.
+  {
+    files: ["scripts/**/*.mjs", "scripts/**/*.js"],
+    rules: { "no-console": "off" },
+  },
+
   // Tests get a longer leash: fixtures and mocks legitimately need loose types.
   {
     files: ["**/*.test.ts", "**/*.test.tsx", "tests/**/*.ts"],

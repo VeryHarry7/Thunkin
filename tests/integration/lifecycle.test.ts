@@ -8,12 +8,21 @@ import {
   afterEach,
   vi,
 } from "vitest";
-import { closeDb, databaseAvailable, pushSchema, truncateAll } from "./harness";
+import {
+  closeDb,
+  databaseAvailable,
+  pushSchema,
+  startFixtureServer,
+  stopFixtureServer,
+  truncateAll,
+} from "./harness";
 import { resetMockProvider } from "@/lib/provider";
 import { resetPorts, setPortsForTesting } from "@/lib/ports";
 import { handleWebhook, submitJob } from "@/lib/jobs/service";
 import { sweep } from "@/lib/jobs/sweeper";
 import { claimDueJobs, getJob, listJobEvents } from "@/lib/jobs/repo";
+import { assetsForJobs, getAsset } from "@/lib/assets/repo";
+import { getStorage } from "@/lib/storage";
 
 /**
  * The scenarios that decide whether "zero orphaned jobs" is true.
@@ -43,11 +52,13 @@ function at(offsetMs: number): void {
 }
 
 describeDb("job lifecycle", () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     pushSchema();
+    await startFixtureServer();
   });
 
   afterAll(async () => {
+    await stopFixtureServer();
     await closeDb();
   });
 
@@ -69,7 +80,7 @@ describeDb("job lifecycle", () => {
   it("1 — reaches ready when the webhook arrives", async () => {
     const job = await submitJob({
       sessionId: SESSION,
-      lookId: "seed-image",
+      lookId: "quick-sketch",
       params: { prompt: "a lighthouse at dusk" },
     });
 
@@ -89,7 +100,7 @@ describeDb("job lifecycle", () => {
     // this is the path that runs in every environment where webhooks break.
     const job = await submitJob({
       sessionId: SESSION,
-      lookId: "seed-image",
+      lookId: "quick-sketch",
       params: { prompt: "a lighthouse at dusk" },
     });
 
@@ -106,7 +117,7 @@ describeDb("job lifecycle", () => {
   it("3 — absorbs a replayed webhook without duplicating anything", async () => {
     const job = await submitJob({
       sessionId: SESSION,
-      lookId: "seed-image",
+      lookId: "quick-sketch",
       params: { prompt: "a lighthouse at dusk" },
     });
 
@@ -130,7 +141,7 @@ describeDb("job lifecycle", () => {
     for (let i = 0; i < 6; i++) {
       await submitJob({
         sessionId: SESSION,
-        lookId: "seed-image",
+        lookId: "quick-sketch",
         params: { prompt: `a lighthouse ${i}` },
         idempotencyKey: `idem_${i}`,
       });
@@ -152,7 +163,7 @@ describeDb("job lifecycle", () => {
   it("5 — expires a stalled job at its ceiling, and not before", async () => {
     const job = await submitJob({
       sessionId: SESSION,
-      lookId: "seed-image",
+      lookId: "quick-sketch",
       params: { prompt: "!stall a lighthouse that never finishes" },
     });
 
@@ -170,18 +181,82 @@ describeDb("job lifecycle", () => {
     expect(expired?.errorCode).toBe("TIMEOUT");
   });
 
+  it("7 — produces a real asset whose bytes are readable", async () => {
+    /*
+     * The gap this closes: before the asset pipeline existed, scenario 2 passed
+     * with a no-op ingest and *zero* assets. "ready" meant nothing had gone
+     * wrong, not that anything had been produced. This asserts the bytes.
+     */
+    const job = await submitJob({
+      sessionId: SESSION,
+      lookId: "quick-sketch",
+      params: { prompt: "a lighthouse at dusk" },
+    });
+
+    at(3_000);
+    await sweep();
+
+    const settled = await getJob(job.id, SESSION);
+    expect(settled?.status).toBe("ready");
+
+    const produced = await assetsForJobs([job.id]);
+    const list = produced.get(job.id) ?? [];
+    expect(list).toHaveLength(1);
+
+    const asset = list[0]!;
+    expect(asset.width).toBeGreaterThan(0);
+    expect(asset.height).toBeGreaterThan(0);
+    // Paints before the bytes land, which is the whole point of storing it.
+    expect(asset.blurPlaceholder).toMatch(/^data:image\/webp;base64,/);
+    // The client gets an opaque route, never a storage path.
+    expect(asset.url).toBe(`/api/assets/${asset.id}`);
+
+    const row = await getAsset(asset.id, SESSION);
+    expect(row).not.toBeNull();
+
+    const stored = await getStorage().get(row!.storageKey);
+    expect(stored).not.toBeNull();
+    expect(stored!.body.byteLength).toBe(row!.bytes);
+    expect(stored!.mime).toBe("image/png");
+  });
+
+  it("8 — fails the job rather than reporting ready when ingest cannot save", async () => {
+    // A result we could not keep must never show as ready: the provider URL
+    // expires and the library would carry an entry that renders nothing.
+    setPortsForTesting({
+      ingestPort: {
+        async ingest() {
+          throw new Error("storage is down");
+        },
+      },
+    });
+
+    const job = await submitJob({
+      sessionId: SESSION,
+      lookId: "quick-sketch",
+      params: { prompt: "a lighthouse at dusk" },
+    });
+
+    at(3_000);
+    await sweep();
+
+    const failed = await getJob(job.id, SESSION);
+    expect(failed?.status).toBe("failed");
+    expect(failed?.errorCode).toBe("INGEST_FAILED");
+  });
+
   it("6 — collapses a double submit sharing one idempotency key", async () => {
     const params = { prompt: "a lighthouse at dusk" };
 
     const first = await submitJob({
       sessionId: SESSION,
-      lookId: "seed-image",
+      lookId: "quick-sketch",
       params,
       idempotencyKey: "idem_double_tap",
     });
     const second = await submitJob({
       sessionId: SESSION,
-      lookId: "seed-image",
+      lookId: "quick-sketch",
       params,
       idempotencyKey: "idem_double_tap",
     });
@@ -193,11 +268,13 @@ describeDb("job lifecycle", () => {
 });
 
 describeDb("failure handling", () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     pushSchema();
+    await startFixtureServer();
   });
 
   afterAll(async () => {
+    await stopFixtureServer();
     await closeDb();
   });
 
@@ -219,7 +296,7 @@ describeDb("failure handling", () => {
   it("carries a provider failure through to the job's error code", async () => {
     const job = await submitJob({
       sessionId: SESSION,
-      lookId: "seed-image",
+      lookId: "quick-sketch",
       params: { prompt: "!fail:CONTENT_REJECTED a forbidden thing" },
     });
 
@@ -235,7 +312,7 @@ describeDb("failure handling", () => {
   it("fails rather than orphaning a job whose key has gone", async () => {
     const job = await submitJob({
       sessionId: SESSION,
-      lookId: "seed-image",
+      lookId: "quick-sketch",
       params: { prompt: "a lighthouse at dusk" },
     });
 
@@ -256,7 +333,7 @@ describeDb("failure handling", () => {
     await expect(
       submitJob({
         sessionId: SESSION,
-        lookId: "seed-image",
+        lookId: "quick-sketch",
         params: { prompt: "a lighthouse" },
       }),
     ).rejects.toMatchObject({ code: "NO_KEY" });
@@ -276,7 +353,7 @@ describeDb("failure handling", () => {
     // The invariant behind the whole workstream, stated as a test.
     const job = await submitJob({
       sessionId: SESSION,
-      lookId: "seed-image",
+      lookId: "quick-sketch",
       params: { prompt: "a lighthouse at dusk" },
     });
 
@@ -295,11 +372,13 @@ describeDb("failure handling", () => {
 });
 
 describeDb("session scoping", () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     pushSchema();
+    await startFixtureServer();
   });
 
   afterAll(async () => {
+    await stopFixtureServer();
     await closeDb();
   });
 
@@ -318,7 +397,7 @@ describeDb("session scoping", () => {
   it("hides another session's job entirely", async () => {
     const job = await submitJob({
       sessionId: SESSION,
-      lookId: "seed-image",
+      lookId: "quick-sketch",
       params: { prompt: "a lighthouse at dusk" },
     });
 
@@ -332,13 +411,13 @@ describeDb("session scoping", () => {
 
     const mine = await submitJob({
       sessionId: SESSION,
-      lookId: "seed-image",
+      lookId: "quick-sketch",
       params,
       idempotencyKey: "shared",
     });
     const theirs = await submitJob({
       sessionId: "sess_other",
-      lookId: "seed-image",
+      lookId: "quick-sketch",
       params,
       idempotencyKey: "shared",
     });

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { JobKind } from "./job";
+import { Job, JobKind } from "./job";
 
 /**
  * A generated result, re-hosted in our own storage.
@@ -56,6 +56,19 @@ export const PublicAsset = z.object({
   durationMs: z.number().int().positive().nullable(),
 });
 export type PublicAsset = z.infer<typeof PublicAsset>;
+
+/**
+ * A job plus what it produced.
+ *
+ * The shape every client-facing job endpoint returns. Additive over `Job` — a
+ * job with no assets yet simply carries an empty array, so the UI can render a
+ * pending tile and a finished one from the same value without branching on
+ * whether a field exists.
+ */
+export const JobWithAssets = Job.extend({
+  assets: z.array(PublicAsset),
+});
+export type JobWithAssets = z.infer<typeof JobWithAssets>;
 
 /** A public, revocable link to a single asset. */
 export const Share = z.object({

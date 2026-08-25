@@ -6,11 +6,12 @@ import {
   issuesToFields,
   ok,
   type ApiResult,
-  type Job,
+  type JobWithAssets,
 } from "@/lib/contracts";
 import { requireSessionId } from "@/lib/session";
 import { ServiceError, submitJob } from "@/lib/jobs/service";
 import { listJobs } from "@/lib/jobs/repo";
+import { assetsForJobs } from "@/lib/assets/repo";
 import { maybeSweep } from "@/lib/jobs/sweeper";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +23,9 @@ const SubmitBody = z.object({
 });
 
 /** Creates and submits a generation. */
-export async function POST(request: Request): Promise<NextResponse<ApiResult<Job>>> {
+export async function POST(
+  request: Request,
+): Promise<NextResponse<ApiResult<JobWithAssets>>> {
   const sessionId = await requireSessionId();
 
   let body: unknown;
@@ -59,7 +62,10 @@ export async function POST(request: Request): Promise<NextResponse<ApiResult<Job
     // Ordinary traffic doubles as a sweep trigger. Not awaited.
     maybeSweep();
 
-    return NextResponse.json(ok(job), { status: 201 });
+    const assets = await assetsForJobs([job.id]);
+    return NextResponse.json(ok({ ...job, assets: assets.get(job.id) ?? [] }), {
+      status: 201,
+    });
   } catch (error) {
     if (error instanceof ServiceError) {
       const status = error.code === "NO_KEY" ? 403 : 400;
@@ -69,8 +75,10 @@ export async function POST(request: Request): Promise<NextResponse<ApiResult<Job
   }
 }
 
-/** This session's jobs, newest first. */
-export async function GET(request: Request): Promise<NextResponse<ApiResult<Job[]>>> {
+/** This session's jobs, newest first, each with whatever it has produced. */
+export async function GET(
+  request: Request,
+): Promise<NextResponse<ApiResult<JobWithAssets[]>>> {
   const sessionId = await requireSessionId();
   const url = new URL(request.url);
 
@@ -85,5 +93,10 @@ export async function GET(request: Request): Promise<NextResponse<ApiResult<Job[
 
   maybeSweep();
 
-  return NextResponse.json(ok(jobs));
+  // One query for the whole page rather than one per job.
+  const assets = await assetsForJobs(jobs.map((job) => job.id));
+
+  return NextResponse.json(
+    ok(jobs.map((job) => ({ ...job, assets: assets.get(job.id) ?? [] }))),
+  );
 }

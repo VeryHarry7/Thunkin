@@ -31,7 +31,7 @@ test.describe("generation over HTTP", () => {
   test("submits a job and drives it to ready", async ({ request }) => {
     const create = await request.post("/api/jobs", {
       data: {
-        lookId: "seed-image",
+        lookId: "quick-sketch",
         params: { prompt: "a lighthouse at dusk" },
         idempotencyKey: `e2e_${Date.now()}_${Math.random()}`,
       },
@@ -51,7 +51,7 @@ test.describe("generation over HTTP", () => {
   test("collapses a repeated idempotency key into one job", async ({ request }) => {
     const idempotencyKey = `e2e_dupe_${Date.now()}_${Math.random()}`;
     const body = {
-      lookId: "seed-image",
+      lookId: "quick-sketch",
       params: { prompt: "a lighthouse at dusk" },
       idempotencyKey,
     };
@@ -64,7 +64,7 @@ test.describe("generation over HTTP", () => {
 
   test("rejects a malformed submission with field detail", async ({ request }) => {
     const response = await request.post("/api/jobs", {
-      data: { lookId: "seed-image", params: { prompt: "" } },
+      data: { lookId: "quick-sketch", params: { prompt: "" } },
     });
 
     expect(response.status()).toBe(400);
@@ -94,7 +94,7 @@ test.describe("generation over HTTP", () => {
   test("lists only this session's jobs", async ({ request }) => {
     const create = await request.post("/api/jobs", {
       data: {
-        lookId: "seed-image",
+        lookId: "quick-sketch",
         params: { prompt: "a lighthouse at dusk" },
         idempotencyKey: `e2e_list_${Date.now()}_${Math.random()}`,
       },

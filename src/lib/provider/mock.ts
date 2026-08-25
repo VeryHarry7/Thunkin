@@ -54,16 +54,23 @@ globalForMock.__thunkinMockRequests = requests;
 const BASE_DURATION_MS = { image: 2_500, video: 8_000 } as const;
 const QUEUE_FRACTION = 0.35;
 
+/**
+ * Raster on purpose.
+ *
+ * The asset pipeline rasterizes, derives a thumbnail and computes a blur
+ * placeholder. Handing it an SVG would mean that whole path never runs the way
+ * it runs in production, and the pipeline's tests would be testing a fiction.
+ */
 const FIXTURES = {
   image: {
-    url: "/fixtures/mock-image.svg",
-    mime: "image/svg+xml",
+    url: "/fixtures/mock-image.png",
+    mime: "image/png",
     width: 1024,
     height: 1024,
   },
   video: {
-    url: "/fixtures/mock-video.svg",
-    mime: "image/svg+xml",
+    url: "/fixtures/mock-video.png",
+    mime: "image/png",
     width: 1280,
     height: 720,
     durationMs: 5_000,

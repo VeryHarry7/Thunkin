@@ -20,6 +20,16 @@ export default defineConfig({
     fileParallelism: false,
     testTimeout: 20_000,
     hookTimeout: 30_000,
-    env: { NODE_ENV: "test", FAL_MODE: "mock" },
+    /*
+     * PUBLIC_URL points at the fixture server the harness starts. The mock
+     * provider returns app-relative result URLs, and ingest resolves them
+     * against PUBLIC_URL — so this is what lets the real ingest path run over
+     * real HTTP instead of being stubbed out.
+     */
+    env: {
+      NODE_ENV: "test",
+      FAL_MODE: "mock",
+      PUBLIC_URL: "http://127.0.0.1:4599",
+    },
   },
 });
