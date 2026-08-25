@@ -40,15 +40,47 @@ export default defineConfig({
   use: { baseURL: BASE_URL, trace: "on-first-retry" },
 
   /**
-   * The viewports AGENT-09's mobile checklist is verified against, plus
-   * desktop. Adding one here is how a device regression gets caught.
+   * Two kinds of spec, deliberately split.
+   *
+   * API specs exercise route handlers over HTTP — a second viewport tells you
+   * nothing about a JSON response, and running them across the whole device
+   * matrix was most of the suite's cost. They run on desktop only.
+   *
+   * UI specs run everywhere, because layout and ergonomics are exactly what a
+   * viewport changes. That matrix is AGENT-09's checklist made executable.
    */
   projects: [
-    { name: "desktop", use: profile(devices["Desktop Chrome"]) },
-    { name: "iphone-se", use: profile(devices["iPhone SE"]) },
-    { name: "iphone-15-pro", use: profile(devices["iPhone 15 Pro"]) },
-    { name: "pixel-8", use: profile(devices["Pixel 7"]) },
-    { name: "ipad", use: profile(devices["iPad (gen 7)"]) },
+    {
+      name: "api",
+      testMatch: /generation\.spec\.ts/,
+      use: profile(devices["Desktop Chrome"]),
+    },
+
+    {
+      name: "desktop",
+      testIgnore: /generation\.spec\.ts/,
+      use: profile(devices["Desktop Chrome"]),
+    },
+    {
+      name: "iphone-se",
+      testIgnore: /generation\.spec\.ts/,
+      use: profile(devices["iPhone SE"]),
+    },
+    {
+      name: "iphone-15-pro",
+      testIgnore: /generation\.spec\.ts/,
+      use: profile(devices["iPhone 15 Pro"]),
+    },
+    {
+      name: "pixel-8",
+      testIgnore: /generation\.spec\.ts/,
+      use: profile(devices["Pixel 7"]),
+    },
+    {
+      name: "ipad",
+      testIgnore: /generation\.spec\.ts/,
+      use: profile(devices["iPad (gen 7)"]),
+    },
   ],
 
   webServer: {

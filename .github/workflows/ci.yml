@@ -118,6 +118,22 @@ jobs:
     name: End-to-end
     runs-on: ubuntu-latest
     needs: [verify]
+    # The API specs drive real route handlers, which read and write jobs. Without
+    # a database every one of them fails — and it fails only here, because a
+    # developer's machine usually has Postgres already running.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: thunkin
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -137,14 +153,19 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
 
+      - name: Create schema
+        run: pnpm db:push --force
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/thunkin
+
       - name: Run e2e
         run: pnpm test:e2e
         env:
-          DATABASE_URL: postgres://thunkin:thunkin@localhost:5432/thunkin
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/thunkin
           MASTER_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
           SESSION_SECRET: ci-session-secret-not-for-any-real-deployment
           SWEEP_SECRET: ci-sweep-secret-value
-          PUBLIC_URL: http://localhost:3100
+          PUBLIC_URL: http://127.0.0.1:3100
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
