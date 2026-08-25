@@ -16,8 +16,12 @@ export interface SubmitInput {
   params: GenerationParams;
   /** The visitor's own key, decrypted at the last possible moment. */
   apiKey: string;
-  /** Where the provider should POST its completion callback. */
-  webhookUrl: string;
+  /**
+   * Where the provider should POST its completion callback, or null when
+   * nothing on the internet can reach us — the normal case on a home network.
+   * Null is not degraded: the sweeper completes the job either way.
+   */
+  webhookUrl: string | null;
 }
 
 export interface SubmitResult {

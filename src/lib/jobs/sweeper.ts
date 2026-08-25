@@ -18,7 +18,7 @@ export interface SweepResult {
   errors: number;
 }
 
-/** How many jobs one sweep handles. Bounded so a serverless run cannot time out. */
+/** How many jobs one sweep handles. Bounded so one tick cannot run unboundedly long. */
 const DEFAULT_BATCH = 25;
 
 export async function sweep(
@@ -54,35 +54,90 @@ export async function sweep(
   return result;
 }
 
-/**
- * A best-effort sweep triggered by ordinary traffic.
+/* ======================================================================
+ * The background loop
  *
- * Cron is the primary trigger, but it can be misconfigured, throttled (Vercel's
- * hobby tier allows only daily), or silently disabled. Piggybacking on real
- * requests means an app with users self-heals regardless. Deliberately small,
- * rate-limited, and never awaited by the request that triggered it.
+ * On a home network fal cannot deliver a webhook at all, so this is not a
+ * safety net — it is *the* way a job finishes.
+ *
+ * Started lazily on the first sweep rather than from `instrumentation.ts`,
+ * because adding Edge middleware makes Next compile the instrumentation hook
+ * for the Edge runtime too, and this module reaches `node:fs` through the
+ * asset pipeline. A runtime guard does not help: webpack traces the import
+ * either way.
+ *
+ * Lazy costs nothing here. Jobs only exist because someone loaded the app, and
+ * loading the app runs `maybeSweep()` — so the loop is always running by the
+ * time there is anything to sweep, and keeps running afterwards.
+ * =================================================================== */
+
+const LOOP_INTERVAL_MS = 30_000;
+const LOOP_BATCH = 25;
+
+/**
+ * Parked on globalThis so dev HMR cannot stack a dozen concurrent loops, each
+ * claiming rows the others just released.
  */
+const globalForLoop = globalThis as unknown as {
+  __thunkinSweepTimer?: ReturnType<typeof setInterval>;
+};
+
+export function ensureSweepLoop(): void {
+  if (globalForLoop.__thunkinSweepTimer) return;
+
+  const timer = setInterval(() => {
+    void sweep({ limit: LOOP_BATCH }).catch((error) => {
+      // A failed sweep must never take the process down: the next tick is
+      // 30 seconds away and jobs stay recoverable until their ceiling.
+      console.error("[sweep] failed", error);
+    });
+  }, LOOP_INTERVAL_MS);
+
+  // Never hold the process open on this alone — shutdown should not wait out
+  // an interval.
+  timer.unref?.();
+  globalForLoop.__thunkinSweepTimer = timer;
+
+  console.warn(`[sweep] reconciler running every ${LOOP_INTERVAL_MS / 1000}s`);
+}
+
+/** Test seam, and the polite thing to call on shutdown. */
+export function stopSweepLoop(): void {
+  if (!globalForLoop.__thunkinSweepTimer) return;
+  clearInterval(globalForLoop.__thunkinSweepTimer);
+  delete globalForLoop.__thunkinSweepTimer;
+}
+
 let lastPiggyback = 0;
 
 /**
- * Tuned to the visitor waiting on a result, not to server thrift.
+ * A best-effort sweep triggered by ordinary traffic.
  *
- * Someone watching a pending tile polls every second or so; a coarse interval
- * would mean long stretches where their own traffic is doing nothing for them.
- * The cost is bounded anyway — `claimDueJobs` pushes `nextPollAt` forward as it
- * claims, so a sweep with nothing due is one cheap indexed query.
+ * The 30-second loop above is the reliable path; this one exists for latency.
+ * Someone watching a pending tile polls every second or so, and waiting up to
+ * 30s for the next tick would make a finished image feel late. Deliberately
+ * small, rate-limited, and never awaited by the request that triggered it.
+ *
+ * The interval below is tuned to the person waiting on a result, not to server
+ * thrift: a coarse one would mean long stretches where their own traffic is
+ * doing nothing for them. The cost is bounded anyway — `claimDueJobs` pushes
+ * `nextPollAt` forward as it claims, so a sweep with nothing due is one cheap
+ * indexed query.
  */
 const PIGGYBACK_INTERVAL_MS = 2_000;
 const PIGGYBACK_BATCH = 5;
 
 export function maybeSweep(now: number = Date.now()): void {
+  // First traffic of the process starts the background loop.
+  ensureSweepLoop();
+
   if (now - lastPiggyback < PIGGYBACK_INTERVAL_MS) return;
   lastPiggyback = now;
 
   // Fire and forget: the visitor's request must not wait on someone else's job.
   void sweep({ limit: PIGGYBACK_BATCH }).catch(() => {
-    // A failed background sweep is not the triggering request's problem. Cron
-    // remains the primary path and will retry.
+    // A failed background sweep is not the triggering request's problem. The
+    // interval loop remains the primary path and will retry.
   });
 }
 

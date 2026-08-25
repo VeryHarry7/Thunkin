@@ -20,7 +20,7 @@ import { resetMockProvider } from "@/lib/provider";
 import { resetPorts, setPortsForTesting } from "@/lib/ports";
 import { handleWebhook, submitJob } from "@/lib/jobs/service";
 import { sweep } from "@/lib/jobs/sweeper";
-import { claimDueJobs, getJob, listJobEvents } from "@/lib/jobs/repo";
+import { claimDueJobs, getJob, listJobEvents, listJobs } from "@/lib/jobs/repo";
 import { assetsForJobs, getAsset } from "@/lib/assets/repo";
 import { getStorage } from "@/lib/storage";
 
@@ -394,16 +394,47 @@ describeDb("session scoping", () => {
     resetPorts();
   });
 
-  it("hides another session's job entirely", async () => {
+  it("shows the same job to a different device", async () => {
+    /*
+     * The phone-and-laptop case. This is a single-user service behind a
+     * passphrase, so an unlocked caller is the owner no matter which browser
+     * they are in. Scoping reads by session cookie would give each device its
+     * own library, which reads as data loss rather than privacy.
+     */
     const job = await submitJob({
       sessionId: SESSION,
       lookId: "quick-sketch",
       params: { prompt: "a lighthouse at dusk" },
     });
 
-    // Not an authorization error the caller can distinguish — simply absent.
-    expect(await getJob(job.id, "sess_someone_else")).toBeNull();
+    expect(await getJob(job.id, "sess_my_phone")).not.toBeNull();
     expect(await getJob(job.id, SESSION)).not.toBeNull();
+  });
+
+  it("still returns null for a job that does not exist", async () => {
+    // Unscoped is not the same as unchecked — absence must stay absence.
+    expect(await getJob("job_does_not_exist", SESSION)).toBeNull();
+  });
+
+  it("lists jobs made on other devices in one library", async () => {
+    await submitJob({
+      sessionId: "sess_laptop",
+      lookId: "quick-sketch",
+      params: { prompt: "made on the laptop" },
+      idempotencyKey: "idem_laptop",
+    });
+    await submitJob({
+      sessionId: "sess_phone",
+      lookId: "quick-sketch",
+      params: { prompt: "made on the phone" },
+      idempotencyKey: "idem_phone",
+    });
+
+    const seenFromPhone = await listJobs("sess_phone", { limit: 50 });
+    expect(seenFromPhone.map((job) => job.params.prompt).sort()).toEqual([
+      "made on the laptop",
+      "made on the phone",
+    ]);
   });
 
   it("lets two sessions reuse the same idempotency key independently", async () => {

@@ -81,9 +81,10 @@ jobs:
         run: pnpm test:integration
         env:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/thunkin
-          MASTER_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
           SESSION_SECRET: ci-session-secret-not-for-any-real-deployment
           SWEEP_SECRET: ci-sweep-secret-value
+          APP_PASSPHRASE: ci-passphrase
+          FAL_KEY: citestkey:citestsecret
           PUBLIC_URL: http://localhost:3000
 
   build:
@@ -109,9 +110,10 @@ jobs:
           # Build-time placeholders. Nothing here reaches a real service — the
           # values only have to satisfy the env contract's shape.
           DATABASE_URL: postgres://thunkin:thunkin@localhost:5432/thunkin
-          MASTER_KEY: ${{ vars.CI_MASTER_KEY || 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' }}
           SESSION_SECRET: ci-session-secret-not-for-any-real-deployment
           SWEEP_SECRET: ci-sweep-secret-value
+          APP_PASSPHRASE: ci-passphrase
+          FAL_KEY: citestkey:citestsecret
           PUBLIC_URL: http://localhost:3000
 
   e2e:
@@ -162,9 +164,10 @@ jobs:
         run: pnpm test:e2e
         env:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/thunkin
-          MASTER_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
           SESSION_SECRET: ci-session-secret-not-for-any-real-deployment
           SWEEP_SECRET: ci-sweep-secret-value
+          APP_PASSPHRASE: ci-passphrase
+          FAL_KEY: citestkey:citestsecret
           PUBLIC_URL: http://127.0.0.1:3100
 
       - uses: actions/upload-artifact@v4

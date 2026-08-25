@@ -3,12 +3,15 @@ import { dirname, join, resolve, sep } from "node:path";
 import type { StoragePort } from "./types";
 
 /**
- * Local-disk storage, for development and tests.
+ * Local-disk storage.
  *
- * Writes under `.storage/` (gitignored). This is deliberately **not** suitable
- * for a deployment — serverless filesystems are ephemeral and per-instance, so
- * an asset written by one request would be missing from the next. AGENT-05's
- * full pass swaps in R2 behind the same interface.
+ * Writes under `.storage/`. On a machine you own with a persistent disk this
+ * is the right answer, not a stand-in: object storage exists to solve
+ * ephemeral, per-instance filesystems, and a box in your house has neither
+ * problem.
+ *
+ * The one thing it does mean: `.storage/` and the database are a matched pair.
+ * Back them up together or you have backed up neither.
  */
 
 const ROOT = resolve(process.cwd(), ".storage");

@@ -1,15 +1,12 @@
 /**
  * Database schema.
  *
- * Each table belongs to the agent that owns its lifecycle. Rather than one
- * shared file that four agents edit, each adds a module under
- * `src/lib/db/tables/` and re-exports it here, so `drizzle-kit` sees a single
- * schema surface while ownership stays split:
+ * Each table gets a module under `src/lib/db/tables/` re-exported here, so
+ * `drizzle-kit` sees a single schema surface without one file growing to hold
+ * everything.
  *
- *   sessions            → AGENT-03 (Key Vault)
- *   jobs, job_events    → AGENT-04 (Generation Core)   ✓ landed
- *   assets              → AGENT-05 (Asset Pipeline)    ✓ landed
- *   shares              → AGENT-08 (Library & Share)
+ *   jobs, job_events    generation lifecycle
+ *   assets              what a finished job produced
  */
 
 export * from "./tables/jobs";

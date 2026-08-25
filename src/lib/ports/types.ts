@@ -2,16 +2,15 @@ import type { GenerationParams, Job, ModelDescriptor } from "@/lib/contracts";
 import type { ProviderOutput } from "@/lib/provider";
 
 /**
- * Ports for capabilities other agents own.
+ * Ports.
  *
- * AGENT-04 sits on the critical path but needs a model registry (AGENT-02), a
- * decrypted key (AGENT-03), and asset ingest (AGENT-05). Rather than block on
- * three siblings, it codes against these narrow interfaces and ships thin
- * dev-only implementations behind them.
+ * The generation core needs a model registry, an API key, and asset ingest.
+ * These narrow interfaces are how it gets them without importing any of their
+ * implementations directly — all three are wired in one place,
+ * `src/lib/ports/index.ts`, which is therefore the only file to read to know
+ * what is actually connected.
  *
- * When a sibling lands, it replaces the *implementation* in
- * `src/lib/ports/index.ts` — never the interface. If an interface needs to
- * change, that is a cross-agent break: open docs/handoffs/ first.
+ * They also happen to be where tests substitute a fake.
  */
 
 /**
@@ -34,13 +33,15 @@ export interface LookResolver {
 }
 
 /**
- * Supplies the visitor's own fal key for a session.
+ * Supplies the fal key a generation runs on.
  *
- * Owned by AGENT-03. Implementations must never log, return, or serialize the
- * key anywhere other than straight into a provider call.
+ * One server-side key for the whole service; the session id is accepted and
+ * ignored, and remains only as the seam if this ever needs to be per-visitor
+ * again. Implementations must never log, return, or serialize the key anywhere
+ * other than straight into a provider call.
  */
 export interface KeyResolver {
-  /** Null when the session has no verified key — callers must return NO_KEY. */
+  /** Null when no key is configured — callers must return NO_KEY. */
   getKeyForSession(sessionId: string): Promise<string | null>;
 }
 

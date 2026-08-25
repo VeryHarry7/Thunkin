@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { db, type Db } from "@/lib/db";
 import { assets, type AssetRow } from "@/lib/db/tables/assets";
 import type { PublicAsset } from "@/lib/contracts";
@@ -23,16 +23,22 @@ export function toPublicAsset(row: AssetRow): PublicAsset {
   };
 }
 
-/** Session-scoped. Another session's asset must be indistinguishable from absent. */
+/**
+ * One asset.
+ *
+ * Unscoped, matching `getJob`: an unlocked caller is the owner regardless of
+ * which device they are on. A missing asset is still a 404, never a 403 —
+ * absence should not confirm existence.
+ */
 export async function getAsset(
   assetId: string,
-  sessionId: string,
+  _sessionId: string,
   client: Db = db,
 ): Promise<AssetRow | null> {
   const rows = await client
     .select()
     .from(assets)
-    .where(and(eq(assets.id, assetId), eq(assets.sessionId, sessionId)))
+    .where(eq(assets.id, assetId))
     .limit(1);
 
   return rows[0] ?? null;

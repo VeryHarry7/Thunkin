@@ -47,7 +47,7 @@ export default function HomePage() {
           Open the studio
         </Link>
         <p className={s.footnote}>
-          Runs on your own fal key. Nothing is stored on our account.
+          A private studio. Everything stays on this machine.
         </p>
       </div>
     </main>

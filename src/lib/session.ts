@@ -3,16 +3,15 @@ import { cookies } from "next/headers";
 import { env } from "@/lib/env";
 
 /**
- * Anonymous sessions.
+ * Device identity.
  *
- * Thunkin has no accounts: a signed cookie is the only thing tying a visitor to
- * their jobs. AGENT-03 owns the `sessions` table and the key vault; this module
- * owns only the cookie itself, which the generation core needs in order to
- * scope anything at all.
+ * Access is decided by the passphrase gate, not by this cookie. What this
+ * gives is a stable id per browser, recorded on every job so you can tell
+ * which device made a thing — reads deliberately ignore it, because your phone
+ * and your laptop are the same person.
  *
- * The value is `<id>.<hmac>`. Signing stops a visitor from editing the cookie to
- * read someone else's library — the id alone would be trivially guessable-by-
- * enumeration otherwise.
+ * The value is `<id>.<hmac>`. Signing costs nothing and keeps the id from being
+ * edited into something that collides with another device's.
  */
 
 export const SESSION_COOKIE = "thunkin_sid";
@@ -89,4 +88,16 @@ export async function requireSessionId(): Promise<string> {
   });
 
   return id;
+}
+
+/**
+ * The identity for an unlocked caller.
+ *
+ * Middleware has already proved they hold the passphrase, so a session cookie
+ * is no longer an authorization signal — it only records which device made a
+ * thing. A browser that has unlocked but never submitted has no cookie yet, and
+ * demanding one would 404 the library on every fresh device.
+ */
+export async function ownerSessionId(): Promise<string> {
+  return (await getSessionId()) ?? "owner";
 }

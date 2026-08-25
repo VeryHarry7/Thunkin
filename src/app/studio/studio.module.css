@@ -35,6 +35,17 @@
   letter-spacing: -0.04em;
 }
 
+.barLink {
+  font-size: var(--t-sm);
+  color: var(--ink-dim);
+  white-space: nowrap;
+  margin-right: auto;
+}
+
+.barLink:hover {
+  color: var(--ink);
+}
+
 .barMeta {
   font-size: var(--t-xs);
   color: var(--ink-faint);

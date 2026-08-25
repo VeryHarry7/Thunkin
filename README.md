@@ -1,65 +1,114 @@
 # Thunkin
 
-AI photo and video generation, at the press of a shutter button. Pick a look,
-type a line, tap once, watch it arrive.
+A private AI image and video studio. Pick a look, type a line, tap once, watch
+it arrive. Runs on your own machine, reachable from your phone on the same
+network, generating on one API key that you pay for.
 
-> **Status: the generation core works end to end.** Wave 0 (foundation) and
-> AGENT-04 (job lifecycle, provider adapters, webhook, reconciler) are in. You
-> can submit a job over HTTP today and watch it reach `ready`. The studio UI
-> lands with AGENT-06. See [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md).
+> **Status:** the whole loop works end to end against fixtures. The four fal
+> model ids are verified as _listed_ in fal's catalogue but have never been
+> called for real — run the live smoke below before trusting them.
 
 ## Quickstart
 
-Nothing here costs money. `FAL_MODE=mock` is the default and returns fixture
-assets on a realistic delay curve, so you need no fal account to develop.
+Nothing costs money until you set `FAL_MODE=live`. The default returns fixture
+images on a realistic delay curve, which is enough to develop against.
 
 ```bash
 pnpm install
-cp .env.example .env.local     # then fill in the three secrets it names
-pnpm db:start                  # throwaway Postgres, no Docker needed
+cp .env.example .env.local        # fill in the passphrase and two secrets
+pnpm db:start                     # throwaway Postgres, no Docker needed
 pnpm db:push
 pnpm dev
 ```
 
-Try the loop:
+Open http://localhost:3000, enter your passphrase, and generate something.
+
+## Running it for real
+
+### On your own box, reachable from your phone
+
+Set `PUBLIC_URL` to the machine's LAN address — not `localhost`, which only
+works on the host itself:
 
 ```bash
-curl -sc /tmp/j -b /tmp/j -X POST localhost:3000/api/jobs \
-  -H 'Content-Type: application/json' \
-  -d '{"lookId":"seed-image","params":{"prompt":"a lighthouse at dusk"}}'
-
-# then poll — the job advances even with no cron and no webhook
-curl -sb /tmp/j localhost:3000/api/jobs
+ip addr | grep 'inet 192'          # Linux
+ipconfig getifaddr en0             # macOS
 ```
 
-Set `DEV_FAL_KEY` in `.env.local` to any `id:secret`-shaped string; it stands in
-for AGENT-03's vault and is refused outright when `FAL_MODE=live`.
+Then:
 
-`.env.example` documents every variable and includes the `node -e` one-liners
-that generate the secrets. Only `DATABASE_URL`, `MASTER_KEY`, `SESSION_SECRET`
-and `SWEEP_SECRET` are required to boot.
+```bash
+# .env.local
+FAL_MODE=live
+FAL_KEY=your-key-id:your-key-secret
+PUBLIC_URL=http://192.168.1.20:3000
+
+pnpm build
+pnpm start -H 0.0.0.0              # -H is what lets your phone connect
+```
+
+Your phone opens `http://192.168.1.20:3000`, enters the passphrase once, and
+stays unlocked for a year.
+
+**Docker Compose** does the same thing plus Postgres and restart-on-reboot:
+
+```bash
+docker compose up -d --build
+```
+
+One honest caveat: the Compose setup was written in an environment with no
+Docker daemon, so it has been validated as _parsing_ but never actually booted.
+The bare-metal path above has been run end to end.
+
+### Keeping it running
+
+`systemd`, if you want it back after a reboot without Docker:
+
+```ini
+# /etc/systemd/system/thunkin.service
+[Unit]
+Description=Thunkin
+After=network.target postgresql.service
+
+[Service]
+WorkingDirectory=/path/to/Thunkin
+EnvironmentFile=/path/to/Thunkin/.env.local
+ExecStart=/usr/bin/pnpm start -H 0.0.0.0
+Restart=always
+User=youruser
+
+[Install]
+WantedBy=multi-user.target
+```
+
+## Verifying the model ids
+
+Every fal endpoint id was checked against fal's live catalogue, and none has
+been exercised. This is the one step that needs your real key:
+
+```bash
+node scripts/smoke-live.mjs           # one image, roughly a cent
+node scripts/smoke-live.mjs --video   # adds video, roughly $1.50
+```
+
+Expect an id or two to be wrong. Fix them in `src/lib/models/registry.ts` —
+adding or correcting a model is a one-file change.
 
 ## Checks
 
 ```bash
-pnpm verify           # typecheck + lint + unit — run this before pushing
-pnpm test:integration # real Postgres; skips cleanly if none is running
-pnpm test:e2e         # Playwright, five device profiles, mock provider
-pnpm build
+pnpm verify            # typecheck + lint + unit
+pnpm test:integration  # real Postgres; skips cleanly without one
+pnpm test:e2e          # Playwright, five viewports, through the real gate
 ```
 
-Integration tests use a real database on purpose: the reconciler's claim query
-relies on `FOR UPDATE SKIP LOCKED`, which has no meaningful behaviour against a
-fake. `pnpm db:start` brings one up from the Postgres binaries already on the
-machine — no Docker daemon required.
-
-Unit tests need no `.env` file: under `NODE_ENV=test` the env contract fills in
+Unit tests need no `.env`: under `NODE_ENV=test` the env contract fills in
 obvious fakes, so a test that reaches a real service is a bug in the test.
 
-## Working against the mock
+## Working against fixtures
 
-Prompt directives make the mock fail on purpose, so error handling can be
-exercised end to end:
+Prompt directives make the mock provider fail on purpose, so error handling can
+be exercised without spending anything:
 
 | Prompt prefix         | Effect                                         |
 | --------------------- | ---------------------------------------------- |
@@ -69,30 +118,50 @@ exercised end to end:
 
 They stack: `!slow !fail:TIMEOUT a lighthouse at dusk`.
 
-## Layout
+## Backups
 
-```
-src/lib/contracts/   the API between agents — shared types and Zod schemas
-src/lib/provider/    the provider boundary; mock and fal adapters
-src/lib/ports/       interfaces for what sibling agents own, with dev stand-ins
-src/lib/jobs/        state machine, repository, service, sweeper
-src/lib/webhooks/    ED25519 verification for fal callbacks
-src/lib/db/          Drizzle connection; tables are added per-agent
-src/lib/env.ts       env contract, validated at boot
-src/app/api/         route handlers
-tests/integration/   lifecycle scenarios against real Postgres
-tests/e2e/           Playwright
+`.storage/` holds the generated files and Postgres holds everything about them.
+**They are a matched pair.** Backing up one without the other leaves you with
+images you cannot find or records pointing at files that are gone.
+
+```bash
+pg_dump "$DATABASE_URL" > backup.sql
+tar czf storage.tar.gz .storage/
 ```
 
-## Docs
+Under Compose those live in the `db-data` and `storage` volumes.
 
-- [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) — goals, agent checklists, sequencing
+## How it fits together
+
+```
+src/lib/contracts/   shared types and Zod schemas
+src/lib/provider/    the fal boundary; mock and live adapters
+src/lib/jobs/        state machine, repository, service, reconciler
+src/lib/assets/      download, derive, store
+src/lib/storage/     local disk behind a port
+src/lib/auth/        the passphrase gate
+src/middleware.ts    what closes everything by default
+src/app/             studio, library, unlock, API routes
+```
+
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how the pieces connect and why
-- [`docs/handoffs/`](docs/handoffs/) — cross-agent change requests
+- [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) — the original plan, most of it
+  now deliberately abandoned
 
-## A note on keys
+## Things worth knowing
 
-Thunkin is bring-your-own-key: it holds no fal key of its own, and each
-visitor's own key pays for their own generations. That key is encrypted at rest
-under `MASTER_KEY` and never leaves the server after entry. The tradeoffs are
-written out plainly in `docs/ARCHITECTURE.md`.
+**fal cannot reach a home network.** It drops webhook deliveries to private
+addresses permanently, so the app detects a private `PUBLIC_URL` and stops
+asking for callbacks it would never receive. A built-in reconciler polls every
+30 seconds instead, and that is what actually finishes your jobs. Nothing is
+degraded by this; the lifecycle was built for it.
+
+**The passphrase is the whole boundary.** Anyone on your network who has it can
+generate, and generating spends money on your key. Pick something real.
+
+**Plain HTTP is a deliberate choice.** TLS on a LAN means a self-signed
+certificate and a trust prompt on every device — real friction against a threat
+(someone already inside your network) that the passphrase does not pretend to
+stop either.
+
+**One box, one disk.** No redundancy. If the disk dies, the library dies.

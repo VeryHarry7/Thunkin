@@ -3,8 +3,10 @@ import type { NextConfig } from "next";
 const config: NextConfig = {
   reactStrictMode: true,
 
-  // AGENT-05 (Asset Pipeline) adds the R2/S3 asset host here once the bucket
-  // exists. Until then every image the app renders is same-origin.
+  // Every image the app renders is same-origin: results are re-hosted into
+  // local storage on completion and served from /api/assets. There is no
+  // remote host to allow, and adding one would mean rendering a provider URL
+  // that expires.
   images: {
     remotePatterns: [],
   },

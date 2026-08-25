@@ -1,6 +1,6 @@
 import type { IngestPort, KeyResolver, LookResolver } from "./types";
 import { registry } from "@/lib/models/registry";
-import { devKeyResolver } from "./dev/dev-key-resolver";
+import { serverKeyResolver } from "@/lib/keys/server-key-resolver";
 import { assetIngest } from "@/lib/assets/ingest";
 
 export * from "./types";
@@ -13,7 +13,6 @@ export * from "./types";
  * codebase moves:
  *
  *   getLookResolver → AGENT-02's curated registry
- *   getKeyResolver  → AGENT-03's vault-backed resolver
  *   getIngestPort   → AGENT-05's asset pipeline
  *
  * Overrides exist for tests only. Production code must always go through the
@@ -21,7 +20,7 @@ export * from "./types";
  */
 
 let lookResolver: LookResolver = registry;
-let keyResolver: KeyResolver = devKeyResolver;
+let keyResolver: KeyResolver = serverKeyResolver;
 let ingestPort: IngestPort = assetIngest;
 
 export function getLookResolver(): LookResolver {
@@ -49,8 +48,8 @@ export function setPortsForTesting(ports: {
 
 export function resetPorts(): void {
   lookResolver = registry;
-  keyResolver = devKeyResolver;
+  keyResolver = serverKeyResolver;
   ingestPort = assetIngest;
 }
 
-export { devKeyResolver };
+export { serverKeyResolver };

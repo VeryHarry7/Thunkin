@@ -1,7 +1,18 @@
 # Architecture
 
-The reference for how Thunkin fits together. `docs/PROJECT_PLAN.md` says what
-we are building and who owns which piece; this says how the pieces connect.
+How Thunkin fits together and why. `docs/PROJECT_PLAN.md` is the original
+fourteen-agent plan for a public product; most of it was deliberately abandoned
+when this became a private, single-user service. Where the two disagree, this
+file is current.
+
+---
+
+## What this is
+
+One person, one box, one API key. It runs on your own machine, is reached from
+your own network, and generates on a key you pay for. That shapes nearly every
+decision below — most of the hard parts of a public generation product are
+defences against strangers, and there are no strangers here.
 
 ---
 
@@ -9,17 +20,20 @@ we are building and who owns which piece; this says how the pieces connect.
 
 ```
 Browser (Next.js RSC + client islands)
-   │  httpOnly signed session cookie
+   │
+   ▼
+src/middleware.ts — closed by default; no unlock cookie, no entry
+   │
    ▼
 Next.js route handlers
-   ├─ /api/session/key        → Key Vault (AES-256-GCM, MASTER_KEY from env)
+   ├─ /api/unlock             → passphrase in, signed cookie out
    ├─ /api/jobs               → Generation Core → provider.submit()
-   ├─ /api/jobs/[id]/stream   → SSE progress
-   ├─ /api/webhooks/fal       ← ED25519-verified provider callback
-   └─ /api/internal/sweep     ← cron reconciler (the safety net)
+   ├─ /api/assets/[id]        → bytes, from local disk
+   ├─ /api/webhooks/fal       ← ED25519-verified callback (unreachable on a LAN)
+   └─ /api/internal/sweep     ← manual poke at the reconciler
    │
-   ├─────► Postgres  sessions · jobs · job_events · assets · shares
-   └─────► R2 / S3   re-hosted assets (provider URLs expire)
+   ├─────► Postgres   jobs · job_events · assets
+   └─────► .storage/  re-hosted assets (provider URLs expire)
 ```
 
 ---
@@ -35,27 +49,37 @@ Nothing above `src/lib/provider/` imports fal. The `Provider` interface in
 - `FAL_MODE=mock` is a first-class mode, not a test hack. Every unit test, the
   whole e2e suite, and any local development run against it, so **a full CI run
   costs nothing**.
-- `FAL_MODE=live` with no adapter installed throws at the call site rather than
-  silently falling back to the mock. A deploy that believes it is live but is
-  not would be a far worse failure than a loud error.
+- `FAL_MODE=live` with no key throws at boot rather than silently falling back
+  to the mock. A run that believes it is live but is not would be a far worse
+  failure than a loud error.
 
-### A webhook is not enough on its own
+### The reconciler is the completion path, not the safety net
 
 fal retries a failed webhook roughly 31 times across an hour, but it **drops
 deliveries to private IP addresses permanently** and **does not follow
-redirects**. A webhook-only design loses jobs — silently, and only in
-production, where `PUBLIC_URL` is the one thing that differs from a laptop.
+redirects**. A box on your LAN has a private address by definition, so a
+webhook-only design would never finish a single job here.
 
-So there are two paths to the same place:
+`src/lib/net/reachability.ts` decides whether fal could plausibly deliver:
+loopback, RFC1918, `169.254`, CGNAT `100.64/10`, `.local`/`.lan`/`.home`, and
+the IPv6 equivalents all mean no. When it says no, `submit` omits the
+`fal_webhook` parameter entirely rather than generating an hour of retries for
+a callback that cannot arrive.
 
-| Path    | Trigger                         | Typical latency   |
-| ------- | ------------------------------- | ----------------- |
-| Webhook | fal POSTs `/api/webhooks/fal`   | ~immediate        |
-| Sweeper | cron hits `/api/internal/sweep` | next backoff tick |
+| Path       | Trigger                              | When it applies     |
+| ---------- | ------------------------------------ | ------------------- |
+| Webhook    | fal POSTs `/api/webhooks/fal`        | public `PUBLIC_URL` |
+| Reconciler | in-process 30s loop, plus every read | always              |
 
-Both call the **same** idempotent `transition()`. Whichever arrives first wins;
-the second is a no-op. The ratio between them is a monitored metric
-(AGENT-12) — a rising sweeper share is the early warning that webhooks broke.
+Both call the **same** idempotent `advanceJob`. Whichever arrives first wins;
+the second is a no-op. Nothing is degraded when the webhook path is absent —
+that case was designed for, and the integration suite proves a job reaching
+`ready` with no webhook at all.
+
+The loop lives in `src/lib/jobs/sweeper.ts` and starts lazily from
+`maybeSweep()`. It is not an instrumentation hook: adding one makes Next
+compile it for the Edge runtime too, where the asset pipeline's `node:fs`
+imports cannot be bundled.
 
 ### One writer for job status
 
@@ -64,34 +88,59 @@ transitions throw. Every transition appends a `job_events` row recording which
 subsystem drove it. **No other module writes `jobs.status`** — that single rule
 is what makes "zero orphaned jobs" checkable rather than aspirational.
 
-### The visitor's key rests server-side
+A transition into the status a job already holds returns `null` rather than
+throwing. The webhook and the reconciler race by design and both are right; the
+convergence rule is what lets them.
 
-This app is bring-your-own-key: we never hold a fal key of our own, and the
-visitor's key pays for their own inference.
+### The key is server-side and the passphrase is the whole boundary
 
-The key cannot live only in a cookie, because the webhook handler and the
-sweeper act on jobs when **no request from that visitor is in flight** — they
-still need to poll status and fetch results. So the key is encrypted with
-AES-256-GCM under `MASTER_KEY` and stored as ciphertext on the session row;
-the cookie carries only the session id.
+There is no bring-your-own-key, no vault, no encryption at rest, and no
+sessions table. `FAL_KEY` sits in the environment, `serverKeyResolver` reads
+it, and that is the entire story.
 
-That is a real tradeoff and worth naming plainly: **a server compromise
-exposes stored keys.** Mitigations are in `docs/SECURITY.md` (AGENT-03), and
-the honest version of this statement is shown to visitors at key entry.
+What guards it is `APP_PASSPHRASE`: one field at `/unlock`, compared in
+constant time, exchanged for an HMAC-signed cookie good for a year.
+`src/middleware.ts` refuses everything else — closed by default, so a route
+added tomorrow is protected before it is written. A missing `SESSION_SECRET`
+returns 500 rather than failing open.
+
+Exemptions are deliberate and short: `/api/webhooks/fal` (authenticated by
+ED25519, and fal will never hold a cookie), `/unlock` itself, and static
+assets.
+
+Attempts are rate-limited in memory — trivially correct on a single-process
+box, and it turns a guessable passphrase from "eventually" into "no".
+
+**Stated plainly: anyone on your network who has the passphrase can spend your
+money.** That is the accepted design, not an oversight.
+
+### The unlocked visitor is the owner
+
+Reads do not filter by session. `jobs.session_id` still records which device
+made a thing, but `getJob`, `listJobs` and `getAsset` ignore it, because your
+phone and your laptop are the same person and a library that differs between
+them is a bug. The parameter survives as `_sessionId` so the seam is visible if
+this ever becomes multi-user again.
 
 ### We re-host every asset
 
 Provider result URLs expire. A library that 404s yesterday's images is
-worthless, so AGENT-05 streams each result into our own bucket on completion
-and everything downstream reads our copy. `Asset.sourceUrl` is retained only
-for debugging and **must never be rendered**.
+worthless, so each result is streamed into local storage on completion and
+everything downstream reads our copy. `Asset.sourceUrl` is retained only for
+debugging and **must never be rendered**.
 
-### No Redis
+Local disk under `.storage/` is the real implementation, not a stand-in —
+this is one long-lived process on one machine, which is precisely the case a
+filesystem serves well. `StoragePort` remains as the seam.
 
-SSE reads job state from Postgres on a short server-side interval. Serverless
-platforms cap connection duration, so the client reconnects with backoff and
-falls back to interval polling — that fallback is expected behaviour, not an
-error path, and has to be good enough to ship on its own.
+The consequence is a backup rule: `.storage/` and Postgres are a matched pair.
+Either one alone is worthless.
+
+### Polling, not streaming
+
+The client polls. On a LAN with one user the difference from SSE is
+imperceptible, and every read piggybacks a sweep, so watching a job is what
+advances it. That removes a reconnect-and-backoff surface entirely.
 
 ---
 
@@ -106,32 +155,31 @@ draft → submitting → queued → running → ingesting → ready
 Terminal states are `ready`, `failed`, `canceled`, `expired`. `isTerminal()` in
 `@/lib/contracts` is the only correct way to ask.
 
-The sweeper backs off `2s → 5s → 15s → 60s`, capped at 5 minutes, and marks a
-job `expired` past a hard ceiling (10 minutes image, 20 minutes video).
+The reconciler backs off `2s → 5s → 15s → 60s`, capped at 5 minutes, and marks
+a job `expired` past a hard ceiling (10 minutes image, 20 minutes video).
+Claims use `FOR UPDATE SKIP LOCKED`, so a piggyback sweep and the interval loop
+never fight over the same job.
 
 ---
 
 ## The contracts layer
 
-`src/lib/contracts/` is the API between agents. Everything imports from
+`src/lib/contracts/` is the shared vocabulary. Everything imports from
 `@/lib/contracts`, never from the individual files.
 
-| Contract                                        | Owner of the behaviour behind it |
-| ----------------------------------------------- | -------------------------------- |
-| `Job`, `JobStatus`, `JobEvent`, `JobErrorCode`  | AGENT-04                         |
-| `Asset`, `PublicAsset`, `Share`                 | AGENT-05, AGENT-08               |
-| `ModelDescriptor`, `ModelTier`, `ModelSupports` | AGENT-02                         |
-| `ApiResult<T>`, `ApiError`, `ok()`, `err()`     | every route handler              |
-| `parseOrThrow`, `issuesToFields`                | every trust boundary             |
-
-**Changing an exported shape is a cross-agent break.** Open a note in
-`docs/handoffs/` before you do.
+| Contract                                        | Behaviour behind it       |
+| ----------------------------------------------- | ------------------------- |
+| `Job`, `JobStatus`, `JobEvent`, `JobErrorCode`  | `src/lib/jobs/`           |
+| `Asset`, `PublicAsset`, `JobWithAssets`         | `src/lib/assets/`         |
+| `ModelDescriptor`, `ModelTier`, `ModelSupports` | `src/lib/models/registry` |
+| `ApiResult<T>`, `ApiError`, `ok()`, `err()`     | every route handler       |
+| `parseOrThrow`, `issuesToFields`                | every trust boundary      |
 
 Two details that are load-bearing rather than stylistic:
 
 - `PublicAsset` deliberately omits `storageKey`, `sourceUrl` and `sessionId`.
-  What the client receives is a signed, short-lived URL — the bucket layout is
-  not public information.
+  Bytes are served through `/api/assets/[id]`, behind the gate, so the storage
+  layout is never public information.
 - `ApiErrorCode` is a closed union that reuses `JobErrorCode`. A failure means
   the same thing whether it surfaces on submit or arrives later on the job
   record, and "never a dead end" is enforceable only because the list has no
@@ -139,26 +187,14 @@ Two details that are load-bearing rather than stylistic:
 
 ---
 
-## Database ownership
+## Database
 
-Each agent adds its own module under `src/lib/db/tables/` and re-exports it
-from `src/lib/db/schema.ts`, so `drizzle-kit` sees one schema surface while
-ownership stays split — four agents never edit one table definition:
+`src/lib/db/tables/` holds one module per table, re-exported from
+`schema.ts`. Two of them: `jobs` + `job_events`, and `assets`.
 
-| Tables               | Owner    | Status  |
-| -------------------- | -------- | ------- |
-| `jobs`, `job_events` | AGENT-04 | landed  |
-| `assets`             | AGENT-05 | landed  |
-| `sessions`           | AGENT-03 | pending |
-| `shares`             | AGENT-08 | pending |
-
-`jobs.session_id` and `assets.session_id` carry no foreign key yet; AGENT-03
-adds the constraint when `sessions` lands.
-
-Indexes that matter, specified now so they are not forgotten later:
-`jobs (session_id, created_at desc)`, `jobs (status, next_poll_at)` — the
-sweeper's claim query depends on it — and a unique
-`jobs (session_id, idempotency_key)`.
+Indexes that matter: `jobs (session_id, created_at desc)`,
+`jobs (status, next_poll_at)` — the reconciler's claim query depends on it —
+and a unique `jobs (session_id, idempotency_key)`.
 
 ---
 
@@ -172,56 +208,49 @@ too-fast mock would hide. Video visibly outlasts image.
 Failure paths are reachable on purpose, via directives at the start of a
 prompt:
 
-| Directive    | Effect                                                   |
-| ------------ | -------------------------------------------------------- |
-| `!fail:CODE` | Fails with that `JobErrorCode`                           |
-| `!slow`      | Roughly 4× the normal duration                           |
-| `!stall`     | Never completes — exercises the sweeper's expiry ceiling |
+| Directive    | Effect                                                      |
+| ------------ | ----------------------------------------------------------- |
+| `!fail:CODE` | Fails with that `JobErrorCode`                              |
+| `!slow`      | Roughly 4× the normal duration                              |
+| `!stall`     | Never completes — exercises the reconciler's expiry ceiling |
 
 Directives stack: `!slow !fail:TIMEOUT a lighthouse`.
 
 ---
 
-## Ports — how parallel agents avoid blocking each other
+## Ports
 
-AGENT-04 sits on the critical path but needs three things its siblings own. It
-codes against narrow interfaces in `src/lib/ports/` and ships dev-only
-implementations behind them. A sibling replaces **one return statement** in
-`src/lib/ports/index.ts`; nothing else in the codebase moves.
+Narrow interfaces in `src/lib/ports/` that were originally there to let
+parallel agents avoid blocking each other. All three now have real
+implementations; they stay because they cost nothing and are where a test
+substitutes a fake.
 
-| Port           | Implementation               | Status                      |
-| -------------- | ---------------------------- | --------------------------- |
-| `LookResolver` | `src/lib/models/registry.ts` | real (AGENT-02, thin)       |
-| `IngestPort`   | `src/lib/assets/ingest.ts`   | real (AGENT-05, thin)       |
-| `KeyResolver`  | reads `DEV_FAL_KEY`          | stand-in, awaiting AGENT-03 |
+| Port           | Implementation                        |
+| -------------- | ------------------------------------- |
+| `LookResolver` | `src/lib/models/registry.ts`          |
+| `IngestPort`   | `src/lib/assets/ingest.ts`            |
+| `KeyResolver`  | `src/lib/keys/server-key-resolver.ts` |
 
-Storage follows the same pattern one layer down. `StoragePort` in
-`src/lib/storage/` has a local-disk implementation writing to `.storage/`, and
-that is **development only**: serverless filesystems are ephemeral and
-per-instance, so an asset written by one request would be missing from the
-next. The R2 implementation is the same interface with a different body.
+`StoragePort` follows the same pattern one layer down, with a local-disk
+implementation writing to `.storage/`.
 
-The dev key resolver refuses to run when `FAL_MODE=live`. The guard is on the
-provider mode rather than `NODE_ENV` deliberately: the risk of a shared
-configured key is that every visitor bills one fal account instead of their
-own, which can only happen with the live adapter. Under `mock` the key is a
-meaningless string, so a production-mode build — which is exactly what the e2e
-suite runs — is free to use it.
+---
 
 ## Two subtleties worth knowing before you touch this
 
-**The session cookie's `Secure` flag follows `PUBLIC_URL`, not `NODE_ENV`.**
-A `Secure` cookie sent over plain HTTP is silently discarded by the client, and
-every request then arrives with no session — which looks like data loss rather
-than a cookie problem. A production build served over http (a local
-`next start`, the e2e suite) is a real case. Any genuine deployment has an
-https `PUBLIC_URL`, so this stays strict where it matters.
+**Cookies' `Secure` flag follows `PUBLIC_URL`, not `NODE_ENV`.** A `Secure`
+cookie sent over plain HTTP is silently discarded by the client, and every
+request then arrives unauthenticated — which looks like data loss rather than a
+cookie problem. Plain HTTP is the normal case here, so this must follow the
+scheme actually in use.
 
 **The webhook re-reads status from the provider rather than trusting its
 payload.** The delivery tells us _that_ something happened, not what to
 believe. Re-reading means a replayed or reordered delivery cannot move a job
-backwards, and it is why the webhook and sweeper paths cannot drift apart in
+backwards, and it is why the webhook and reconciler paths cannot drift apart in
 interpretation — both call `advanceJob`.
+
+---
 
 ## Conventions
 
@@ -229,6 +258,5 @@ interpretation — both call `advanceJob`.
 - Unit tests sit beside the code they cover (`*.test.ts`); e2e lives in
   `tests/e2e/`.
 - Every route handler returns `ApiResult<T>` and nothing else.
-- A resource belonging to another session is a **404, never a 403** — a 403
-  confirms the resource exists.
-- Don't edit another agent's files. Record the request in `docs/handoffs/`.
+- A resource that does not exist is a **404, never a 403** — a 403 confirms the
+  id is real.

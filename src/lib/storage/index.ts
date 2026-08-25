@@ -7,9 +7,9 @@ export { localStorage, LOCAL_STORAGE_ROOT } from "./local";
 /**
  * Resolves the active storage backend.
  *
- * Local disk today. When AGENT-05's full pass adds the R2 implementation, this
- * switches on the `R2_*` env values being present — one function body, and
- * nothing above the boundary moves.
+ * Local disk, which for a single box with a real filesystem is the destination
+ * rather than a waypoint. The port stays because it costs nothing and is the
+ * seam if this ever needs to run somewhere ephemeral.
  */
 let storage: StoragePort = localStorage;
 

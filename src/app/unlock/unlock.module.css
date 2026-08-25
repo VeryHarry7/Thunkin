@@ -1,0 +1,68 @@
+.page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--s-6) var(--s-4);
+  background: var(--surface-0);
+}
+
+.card {
+  width: 100%;
+  max-width: 22rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  text-align: center;
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-size: var(--t-sm);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: var(--t-2xl);
+  letter-spacing: -0.04em;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.input {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-2);
+  padding: var(--s-3) var(--s-4);
+  /* 16px minimum or iOS zooms the viewport on focus — this is the first thing
+     touched on a phone, so it is the worst possible place for that. */
+  font-size: 16px;
+  text-align: center;
+  letter-spacing: 0.1em;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface-1);
+}
+
+.error {
+  font-size: var(--t-sm);
+  color: var(--danger);
+  min-height: 1.2em;
+}
+
+.note {
+  font-size: var(--t-xs);
+  color: var(--ink-faint);
+  line-height: 1.5;
+}

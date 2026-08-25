@@ -8,9 +8,12 @@ export const dynamic = "force-dynamic";
 /**
  * The reconciler endpoint.
  *
- * Invoked by cron (see vercel.json) and reachable manually with the shared
- * secret. It is the safety net behind every job: whatever happens to webhook
- * delivery, this drives non-terminal jobs to a terminal state.
+ * The in-process loop in `src/lib/jobs/sweeper.ts` is what normally drives
+ * reconciliation; this endpoint exists so you can poke it by hand when
+ * something looks stuck. Both call the same `sweep()`.
+ *
+ * It is exempt from the passphrase gate because `SWEEP_SECRET` is its
+ * credential — a caller here is a script, not a browser, and has no cookie.
  */
 
 function authorized(request: Request): boolean {
@@ -18,9 +21,6 @@ function authorized(request: Request): boolean {
     request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
     new URL(request.url).searchParams.get("secret") ??
     "";
-
-  // Vercel signs its own cron invocations; accept those without the secret.
-  if (request.headers.get("x-vercel-cron")) return true;
 
   const a = Buffer.from(provided);
   const b = Buffer.from(env.SWEEP_SECRET);

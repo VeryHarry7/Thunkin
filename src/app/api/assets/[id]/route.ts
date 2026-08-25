@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
-import { getSessionId } from "@/lib/session";
+import { ownerSessionId } from "@/lib/session";
 import { getAsset } from "@/lib/assets/repo";
 import { getStorage } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
+
+/** A filename someone would recognise in their downloads folder. */
+function filename(asset: { id: string; mime: string; ingestedAt: Date }): string {
+  const extension = asset.mime.split("/")[1]?.replace("jpeg", "jpg") ?? "bin";
+  const date = asset.ingestedAt.toISOString().slice(0, 10);
+  return `thunkin-${date}-${asset.id.slice(4, 12)}.${extension}`;
+}
 
 /**
  * Serves an asset's bytes.
@@ -21,18 +28,16 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse | Response> {
   const { id } = await context.params;
-  const sessionId = await getSessionId();
-
-  if (!sessionId) {
-    return NextResponse.json({ ok: false }, { status: 404 });
-  }
+  const sessionId = await ownerSessionId();
 
   const asset = await getAsset(id, sessionId);
   if (!asset) {
     return NextResponse.json({ ok: false }, { status: 404 });
   }
 
-  const wantsPoster = new URL(request.url).searchParams.get("poster") === "1";
+  const params = new URL(request.url).searchParams;
+  const wantsPoster = params.get("poster") === "1";
+  const wantsDownload = params.get("download") === "1";
   const key = wantsPoster && asset.posterKey ? asset.posterKey : asset.storageKey;
 
   const stored = await getStorage().get(key);
@@ -50,7 +55,9 @@ export async function GET(
       // Immutable: an asset's bytes never change, so a long cache is safe and
       // the session scoping above is what keeps it private.
       "Cache-Control": "private, max-age=31536000, immutable",
-      "Content-Disposition": `inline; filename="thunkin-${asset.id}"`,
+      // `attachment` is what makes a browser save rather than navigate, and
+      // an extension is what makes the saved file openable.
+      "Content-Disposition": `${wantsDownload ? "attachment" : "inline"}; filename="${filename(asset)}"`,
     },
   });
 }

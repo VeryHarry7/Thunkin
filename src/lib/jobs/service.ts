@@ -12,6 +12,7 @@ import {
   schedulePoll,
 } from "./repo";
 import { hasExpired } from "./backoff";
+import { webhookUrlFor } from "@/lib/net/reachability";
 
 /**
  * The generation service.
@@ -57,7 +58,10 @@ export async function submitJob(input: SubmitJobInput): Promise<Job> {
 
   const apiKey = await getKeyResolver().getKeyForSession(input.sessionId);
   if (!apiKey) {
-    throw new ServiceError("NO_KEY", "Add your API key to start generating.");
+    throw new ServiceError(
+      "NO_KEY",
+      "No fal key configured. Set FAL_KEY in .env.local and restart.",
+    );
   }
 
   const params = getLookResolver().toProviderParams(descriptor, input.params);
@@ -83,7 +87,7 @@ export async function submitJob(input: SubmitJobInput): Promise<Job> {
       kind: descriptor.kind,
       params,
       apiKey,
-      webhookUrl: `${env.PUBLIC_URL}/api/webhooks/fal`,
+      webhookUrl: webhookUrlFor(env.PUBLIC_URL),
     });
 
     await applyTransition(
@@ -129,7 +133,7 @@ export async function advanceJob(job: Job, source: TransitionSource): Promise<Jo
       {
         type: "FAILED",
         code: "INVALID_KEY",
-        message: "Add your API key again to see this result.",
+        message: "No fal key configured, so this result could not be fetched.",
       },
       source,
     );

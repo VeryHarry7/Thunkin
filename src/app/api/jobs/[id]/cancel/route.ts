@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { err, ok, type ApiResult, type Job } from "@/lib/contracts";
-import { getSessionId } from "@/lib/session";
+import { ownerSessionId } from "@/lib/session";
 import { ServiceError, cancelJob } from "@/lib/jobs/service";
 
 export const dynamic = "force-dynamic";
@@ -10,11 +10,7 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse<ApiResult<Job>>> {
   const { id } = await context.params;
-  const sessionId = await getSessionId();
-
-  if (!sessionId) {
-    return NextResponse.json(err("NOT_FOUND", "No such job."), { status: 404 });
-  }
+  const sessionId = await ownerSessionId();
 
   try {
     return NextResponse.json(ok(await cancelJob(id, sessionId)));

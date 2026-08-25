@@ -1,0 +1,55 @@
+# Thunkin as a service on your own machine.
+#
+#   cp .env.example .env.local   # fill it in
+#   docker compose up -d --build
+#
+# Then open http://<this-machine's-LAN-ip>:3000 from a phone or laptop.
+# Find that address with `ip addr` on Linux, `ipconfig getifaddr en0` on macOS.
+#
+# NOTE: this file has not been booted end to end — it was written in an
+# environment with no Docker daemon. The bare-metal path in README.md is the
+# one that has actually been run.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: thunkin
+      POSTGRES_PASSWORD: thunkin
+      POSTGRES_DB: thunkin
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thunkin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    # 0.0.0.0 so your phone can reach it. Bound to localhost the app answers
+    # only to the machine it runs on, which defeats the point.
+    ports:
+      - "3000:3000"
+    # One config file, the same one `pnpm dev` reads. Compose would otherwise
+    # default to `.env` and you would be maintaining two.
+    env_file:
+      - .env.local
+    environment:
+      # Overrides whatever .env.local says: inside Compose the database is a
+      # service name, not a port on the host.
+      DATABASE_URL: postgres://thunkin:thunkin@db:5432/thunkin
+      HOSTNAME: "0.0.0.0"
+    volumes:
+      # Generated images live here. This and the database are a matched pair —
+      # back them up together or you have backed up neither.
+      - storage:/app/.storage
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:
+  storage:

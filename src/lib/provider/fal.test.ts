@@ -45,6 +45,17 @@ describe("submit", () => {
     expect(calls[0]!.init?.method).toBe("POST");
   });
 
+  it("omits fal_webhook entirely when nothing can reach us", async () => {
+    // A LAN deployment. Asking for a callback that can never arrive costs ~31
+    // failed retries per job on fal's side and gains nothing here.
+    const { impl, calls } = stubFetch(jsonResponse({ request_id: "req_1" }));
+
+    await createFalProvider(impl).submit({ ...SUBMIT, webhookUrl: null });
+
+    expect(calls[0]!.url).toBe("https://queue.fal.run/fal-ai/flux-2/pro");
+    expect(calls[0]!.url).not.toContain("fal_webhook");
+  });
+
   it("sends the key as an Authorization header, never in the URL", async () => {
     const { impl, calls } = stubFetch(jsonResponse({ request_id: "req_1" }));
     await createFalProvider(impl).submit(SUBMIT);

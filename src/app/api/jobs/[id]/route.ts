@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { err, ok, type ApiResult, type JobWithAssets } from "@/lib/contracts";
-import { getSessionId } from "@/lib/session";
+import { ownerSessionId } from "@/lib/session";
 import { getJob } from "@/lib/jobs/repo";
 import { assetsForJobs } from "@/lib/assets/repo";
+import { deleteJob } from "@/lib/assets/delete";
 import { maybeSweep } from "@/lib/jobs/sweeper";
 
 export const dynamic = "force-dynamic";
@@ -18,11 +19,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse<ApiResult<JobWithAssets>>> {
   const { id } = await context.params;
-  const sessionId = await getSessionId();
-
-  if (!sessionId) {
-    return NextResponse.json(err("NOT_FOUND", "No such job."), { status: 404 });
-  }
+  const sessionId = await ownerSessionId();
 
   const job = await getJob(id, sessionId);
   if (!job) {
@@ -36,4 +33,21 @@ export async function GET(
 
   const assets = await assetsForJobs([job.id]);
   return NextResponse.json(ok({ ...job, assets: assets.get(job.id) ?? [] }));
+}
+
+/** Removes a generation and the bytes it produced. */
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ id: string }> },
+): Promise<NextResponse<ApiResult<{ deleted: boolean }>>> {
+  const { id } = await context.params;
+  const sessionId = await ownerSessionId();
+
+  const job = await getJob(id, sessionId);
+  if (!job) {
+    return NextResponse.json(err("NOT_FOUND", "No such job."), { status: 404 });
+  }
+
+  await deleteJob(id);
+  return NextResponse.json(ok({ deleted: true }));
 }

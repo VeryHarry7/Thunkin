@@ -116,17 +116,23 @@ export async function createJob(
   return { job: toJob(found), created: false };
 }
 
-/** Session-scoped. A caller must never be able to read another session's job. */
+/**
+ * One job.
+ *
+ * Not scoped by session, deliberately. This is a single-user service behind a
+ * passphrase: an unlocked caller *is* the owner, and their phone and their
+ * laptop hold different session cookies. Scoping here would mean each device
+ * saw a different library, which is a bug rather than a boundary.
+ *
+ * `sessionId` is accepted and ignored so callers stay unchanged and the seam
+ * is obvious if this ever becomes multi-user again.
+ */
 export async function getJob(
   jobId: string,
-  sessionId: string,
+  _sessionId: string,
   client: Db = db,
 ): Promise<Job | null> {
-  const rows = await client
-    .select()
-    .from(jobs)
-    .where(and(eq(jobs.id, jobId), eq(jobs.sessionId, sessionId)))
-    .limit(1);
+  const rows = await client.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
 
   return rows[0] ? toJob(rows[0]) : null;
 }
@@ -145,23 +151,27 @@ export async function getJobByRequestId(
   return rows[0] ? toJob(rows[0]) : null;
 }
 
+/**
+ * The library — every job, newest first.
+ *
+ * Unscoped for the same reason as `getJob`: one owner, many devices, one
+ * library.
+ */
 export async function listJobs(
-  sessionId: string,
+  _sessionId: string,
   options: { limit?: number; before?: Date } = {},
   client: Db = db,
 ): Promise<Job[]> {
   const limit = Math.min(Math.max(options.limit ?? 30, 1), 100);
 
-  const where = options.before
-    ? and(eq(jobs.sessionId, sessionId), lte(jobs.createdAt, options.before))
-    : eq(jobs.sessionId, sessionId);
-
-  const rows = await client
-    .select()
-    .from(jobs)
-    .where(where)
-    .orderBy(desc(jobs.createdAt))
-    .limit(limit);
+  const rows = options.before
+    ? await client
+        .select()
+        .from(jobs)
+        .where(lte(jobs.createdAt, options.before))
+        .orderBy(desc(jobs.createdAt))
+        .limit(limit)
+    : await client.select().from(jobs).orderBy(desc(jobs.createdAt)).limit(limit);
 
   return rows.map(toJob);
 }

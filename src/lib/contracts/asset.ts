@@ -69,13 +69,3 @@ export const JobWithAssets = Job.extend({
   assets: z.array(PublicAsset),
 });
 export type JobWithAssets = z.infer<typeof JobWithAssets>;
-
-/** A public, revocable link to a single asset. */
-export const Share = z.object({
-  slug: z.string(),
-  assetId: z.string(),
-  createdAt: z.date(),
-  expiresAt: z.date().nullable(),
-  revoked: z.boolean(),
-});
-export type Share = z.infer<typeof Share>;

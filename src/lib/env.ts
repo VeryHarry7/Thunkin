@@ -14,64 +14,71 @@ import { z } from "zod";
 export const FalMode = z.enum(["mock", "live"]);
 export type FalMode = z.infer<typeof FalMode>;
 
-/**
- * A 32-byte key, base64-encoded, used by AGENT-03's vault to encrypt the
- * user-supplied fal key at rest. Generate with:
- *   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
- */
-const base64Key32 = z.string().refine(
-  (value) => {
-    try {
-      return Buffer.from(value, "base64").length === 32;
-    } catch {
-      return false;
+const serverSchema = z
+  .object({
+    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+
+    /** Postgres connection string. */
+    DATABASE_URL: z.string().min(1, "required — see .env.example"),
+
+    /**
+     * Signs the session cookie and the unlock cookie.
+     *
+     * Rotating it logs every device out, which is a safe and occasionally
+     * useful thing to do.
+     */
+    SESSION_SECRET: z.string().min(32, "must be at least 32 characters"),
+
+    /**
+     * The single passphrase that gets you in.
+     *
+     * This is the whole access boundary: anyone on the network who has it can
+     * generate, and generation spends real money on `FAL_KEY`. Treat it like a
+     * password, not a formality.
+     */
+    APP_PASSPHRASE: z.string().min(8, "must be at least 8 characters"),
+
+    /**
+     * The origin this app is reached at — e.g. `http://192.168.1.20:3000`.
+     *
+     * Used to resolve provider result URLs and to decide whether fal could
+     * reach us with a webhook at all. A private address is expected and
+     * supported; see `src/lib/net/reachability.ts`.
+     */
+    PUBLIC_URL: z.url(),
+
+    /** Guards /api/internal/sweep so the reconciler is not publicly pokeable. */
+    SWEEP_SECRET: z.string().min(16, "must be at least 16 characters"),
+
+    FAL_MODE: FalMode.default("mock"),
+
+    /**
+     * The fal API key every generation runs on.
+     *
+     * Single-user service: one key, held server-side, never shown to a browser.
+     * Optional under `FAL_MODE=mock` because nothing leaves the process there.
+     *
+     * An empty value means unset. `.env.example` ships the line as `FAL_KEY=`,
+     * so without this an untouched copy would satisfy `live` mode's check and
+     * then fail on the first generation instead of at boot.
+     */
+    FAL_KEY: z
+      .string()
+      .optional()
+      .transform((value) => (value?.trim() ? value : undefined)),
+  })
+  .superRefine((value, ctx) => {
+    // Catching this at boot beats discovering it when the first real
+    // generation fails, which is exactly the kind of thing that only shows up
+    // in production.
+    if (value.FAL_MODE === "live" && !value.FAL_KEY) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["FAL_KEY"],
+        message: "required when FAL_MODE=live",
+      });
     }
-  },
-  { message: "must be 32 bytes, base64-encoded (see .env.example)" },
-);
-
-const serverSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-
-  /** Postgres connection string. */
-  DATABASE_URL: z.string().min(1, "required — see .env.example"),
-
-  /** Encrypts the user's fal key at rest. Rotating it invalidates stored keys. */
-  MASTER_KEY: base64Key32,
-
-  /** Signs the anonymous session cookie. */
-  SESSION_SECRET: z.string().min(32, "must be at least 32 characters"),
-
-  /**
-   * The app's externally reachable origin. fal posts webhooks here, so it must
-   * be a real public URL in any environment that talks to live fal — a private
-   * or loopback address gets its deliveries dropped permanently.
-   */
-  PUBLIC_URL: z.url(),
-
-  /** Shared secret guarding /api/internal/sweep against public invocation. */
-  SWEEP_SECRET: z.string().min(16, "must be at least 16 characters"),
-
-  FAL_MODE: FalMode.default("mock"),
-
-  /**
-   * A fal key for local development only, so the generation core is runnable
-   * before AGENT-03's vault exists.
-   *
-   * The dev key resolver that reads this **refuses to run in production** — a
-   * real deployment gets its key from the visitor, through the vault, never
-   * from configuration. Listed here so all config is visible in one place, not
-   * because it is a supported production variable.
-   */
-  DEV_FAL_KEY: z.string().optional(),
-
-  // Object storage — AGENT-05 consumes these.
-  R2_ACCOUNT_ID: z.string().optional(),
-  R2_ACCESS_KEY_ID: z.string().optional(),
-  R2_SECRET_ACCESS_KEY: z.string().optional(),
-  R2_BUCKET: z.string().optional(),
-  R2_PUBLIC_HOST: z.string().optional(),
-});
+  });
 
 export type Env = z.infer<typeof serverSchema>;
 
@@ -82,11 +89,12 @@ export type Env = z.infer<typeof serverSchema>;
  */
 const testDefaults: Record<string, string> = {
   DATABASE_URL: "postgres://thunkin:thunkin@localhost:5432/thunkin_test",
-  MASTER_KEY: Buffer.alloc(32, 7).toString("base64"),
   SESSION_SECRET: "test-session-secret-not-for-any-real-deployment",
+  APP_PASSPHRASE: "test-passphrase",
   PUBLIC_URL: "http://localhost:3000",
   SWEEP_SECRET: "test-sweep-secret-value",
   FAL_MODE: "mock",
+  FAL_KEY: "testkey123:testsecret456",
 };
 
 function load(): Env {

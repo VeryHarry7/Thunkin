@@ -94,14 +94,14 @@ export default defineConfig({
       PORT: String(PORT),
       DATABASE_URL:
         process.env.DATABASE_URL ?? "postgres://postgres@127.0.0.1:5433/thunkin",
-      MASTER_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
       SESSION_SECRET: "e2e-session-secret-not-for-any-real-deployment",
       SWEEP_SECRET: "e2e-sweep-secret",
+      // The gate the suite unlocks through, so it is exercised rather than
+      // bypassed on every run.
+      APP_PASSPHRASE: "e2e-passphrase",
+      // Mock mode, so this is never sent anywhere.
+      FAL_KEY: "e2etestkey:e2etestsecret",
       PUBLIC_URL: BASE_URL,
-      // Stands in for AGENT-03's vault. Safe here because FAL_MODE=mock means
-      // the key never reaches a real service — the resolver itself refuses to
-      // hand this out when the live adapter is in play.
-      DEV_FAL_KEY: "e2etestkey:e2etestsecret",
     },
   },
 });

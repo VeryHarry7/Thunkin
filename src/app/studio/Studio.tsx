@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import type { ApiResult, JobWithAssets, ModelDescriptor } from "@/lib/contracts";
 import { isTerminal } from "@/lib/contracts";
 import { ratioToNumber } from "@/lib/models/registry";
@@ -18,13 +19,13 @@ import s from "./studio.module.css";
 /** Copy for every failure the taxonomy can produce, and its one way out. */
 const RECOVERY: Record<string, { title: string; body: string; action: string }> = {
   INVALID_KEY: {
-    title: "That key was refused",
-    body: "The API key on this session is no longer valid. Add it again to carry on.",
-    action: "Try again",
+    title: "fal refused the API key",
+    body: "The key this server runs on was rejected. Check FAL_KEY in the environment and restart.",
+    action: "Run it again",
   },
   INSUFFICIENT_CREDIT: {
     title: "Out of credit",
-    body: "Your fal account ran out of credit partway through. Top it up and run this again.",
+    body: "The fal account behind this server ran out of credit. Top it up and run this again.",
     action: "Run it again",
   },
   RATE_LIMITED: {
@@ -201,10 +202,11 @@ export function Studio({ looks }: { looks: ModelDescriptor[] }) {
     <div className={s.shell}>
       <header className={s.bar}>
         <span className={s.wordmark}>Thunkin</span>
+        <Link className={s.barLink} href="/library">
+          Library
+        </Link>
         <span className={s.barMeta}>
-          {pendingCount > 0
-            ? `${pendingCount} in flight`
-            : `${jobs.length} in this session`}
+          {pendingCount > 0 ? `${pendingCount} in flight` : `${jobs.length} saved`}
         </span>
       </header>
 

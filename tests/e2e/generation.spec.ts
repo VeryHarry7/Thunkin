@@ -8,6 +8,15 @@ import { test, expect, type APIRequestContext } from "@playwright/test";
  * drives them. Runs against the mock provider, so it costs nothing.
  */
 
+/**
+ * Every spec here runs behind the passphrase gate, so each context unlocks
+ * first. Exercising the real gate on every run beats a bypass that could rot
+ * without anyone noticing.
+ */
+test.beforeEach(async ({ request }) => {
+  await request.post("/api/unlock", { data: { passphrase: "e2e-passphrase" } });
+});
+
 /** Polls until the job settles, or gives up. */
 async function waitForTerminal(
   request: APIRequestContext,

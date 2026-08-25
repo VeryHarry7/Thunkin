@@ -117,9 +117,11 @@ export function createFalProvider(fetchImpl: FetchLike = fetch): Provider {
         throw new ProviderError("INVALID_KEY", "No API key was supplied.");
       }
 
-      const url = `${QUEUE_BASE}/${input.endpoint}?fal_webhook=${encodeURIComponent(
-        input.webhookUrl,
-      )}`;
+      // Asking for a webhook we cannot receive costs ~31 failed retries per
+      // job on fal's side and gains nothing. Omitting it is the honest signal.
+      const url = input.webhookUrl
+        ? `${QUEUE_BASE}/${input.endpoint}?fal_webhook=${encodeURIComponent(input.webhookUrl)}`
+        : `${QUEUE_BASE}/${input.endpoint}`;
 
       const body = await call(url, input.apiKey, {
         method: "POST",

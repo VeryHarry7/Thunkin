@@ -5,7 +5,15 @@ import { test, expect } from "@playwright/test";
  * real device width can make.
  */
 
-const PAGES = ["/", "/studio"];
+const PAGES = ["/", "/studio", "/library"];
+
+// The gate stands in front of everything; unlock once per context.
+test.beforeEach(async ({ page }) => {
+  await page.goto("/unlock");
+  await page.getByLabel("Passphrase").fill("e2e-passphrase");
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await page.waitForURL((url) => !url.pathname.startsWith("/unlock"));
+});
 
 for (const path of PAGES) {
   test(`${path} renders`, async ({ page }) => {

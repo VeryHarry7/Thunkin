@@ -25,9 +25,12 @@ export const jobs = pgTable(
     id: text("id").primaryKey(),
 
     /**
-     * No foreign key yet — AGENT-03 owns the `sessions` table and adds the
-     * constraint when it lands. Keeping it a plain column avoids two agents
-     * editing one definition.
+     * Which device created this job. A plain column with no foreign key:
+     * there is no `sessions` table and will not be one, because access is
+     * decided by the passphrase gate rather than by a session row.
+     *
+     * Reads ignore it. It is kept because knowing where something came from is
+     * occasionally useful and costs one column.
      */
     sessionId: text("session_id").notNull(),
 
