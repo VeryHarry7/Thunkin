@@ -44,9 +44,14 @@ export function Library() {
     return () => clearInterval(timer);
   }, [pending, refresh]);
 
-  async function remove(jobId: string) {
-    // Optimistic: the row is gone from view immediately, and a failure simply
-    // restores it on the next refresh rather than blocking on a spinner.
+  async function remove(jobId: string, prompt: string) {
+    // Deleting removes the bytes, not just the row, and there is no second
+    // copy anywhere. On a phone this button is a thumb's width from the one
+    // that opens the image, so a confirmation earns its interruption.
+    if (!window.confirm(`Delete "${prompt}"? This cannot be undone.`)) return;
+
+    // Optimistic past that point: the tile goes immediately, and a failure
+    // simply restores it on the next refresh rather than blocking on a spinner.
     setJobs((current) => current.filter((job) => job.id !== jobId));
     await fetch(`/api/jobs/${jobId}`, { method: "DELETE" }).catch(() => {});
     void refresh();
@@ -122,7 +127,7 @@ export function Library() {
                         className={`${s.action} ${s.danger}`}
                         title="Delete"
                         aria-label={`Delete: ${job.params.prompt}`}
-                        onClick={() => void remove(job.id)}
+                        onClick={() => void remove(job.id, job.params.prompt)}
                       >
                         ✕
                       </button>

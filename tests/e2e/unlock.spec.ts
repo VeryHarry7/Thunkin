@@ -71,3 +71,19 @@ test("the fal webhook stays reachable without a cookie", async ({ request }) => 
   expect(response.status()).toBe(401);
   expect(await response.json()).toHaveProperty("reason");
 });
+
+test("the reconciler poke stays reachable without a cookie", async ({ request }) => {
+  // Same reasoning as the webhook: SWEEP_SECRET is this endpoint's credential
+  // and a script poking it has no cookie. This assertion exists because the
+  // gate did lock it out once — every spec elsewhere runs unlocked, so nothing
+  // else here would have noticed.
+  const response = await request.get("/api/internal/sweep?secret=e2e-sweep-secret");
+  expect(response.status()).toBe(200);
+  expect((await response.json()).ok).toBe(true);
+});
+
+test("the reconciler poke still refuses a wrong secret", async ({ request }) => {
+  // Exempt from the gate is not exempt from authentication.
+  const response = await request.get("/api/internal/sweep?secret=not-the-secret");
+  expect(response.status()).toBe(401);
+});
