@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Every job runs against fixtures. CI must never make a billable call.
+  FAL_MODE: mock
+  NODE_ENV: test
+
+jobs:
+  verify:
+    name: Typecheck, lint, unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Unit tests
+        run: pnpm test
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+        env:
+          # Build-time placeholders. Nothing here reaches a real service — the
+          # values only have to satisfy the env contract's shape.
+          DATABASE_URL: postgres://thunkin:thunkin@localhost:5432/thunkin
+          MASTER_KEY: ${{ vars.CI_MASTER_KEY || 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' }}
+          SESSION_SECRET: ci-session-secret-not-for-any-real-deployment
+          SWEEP_SECRET: ci-sweep-secret-value
+          PUBLIC_URL: http://localhost:3000
+
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    needs: [verify]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # GitHub runners have no preinstalled Chromium, so the config's
+      # executablePath fallback does not apply here and we install it.
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run e2e
+        run: pnpm test:e2e
+        env:
+          DATABASE_URL: postgres://thunkin:thunkin@localhost:5432/thunkin
+          MASTER_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          SESSION_SECRET: ci-session-secret-not-for-any-real-deployment
+          SWEEP_SECRET: ci-sweep-secret-value
+          PUBLIC_URL: http://localhost:3100
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

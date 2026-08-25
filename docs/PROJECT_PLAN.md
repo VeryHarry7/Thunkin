@@ -9,6 +9,7 @@
 **Why the plan is shaped this way:** the hard problems here are not "call a model." They are (1) async jobs that take 10s–6min and can fail silently, (2) making a many-knob domain feel like few-knob, and (3) BYOK — the user supplies their own fal.ai key, which is excellent for cost and abuse risk but is the single biggest threat to "a few buttons." Three workstreams exist specifically to absorb that friction.
 
 **Decisions already made** (from clarification):
+
 - **Provider:** fal.ai primary, behind a thin adapter. Its unified queue API covers Veo 3.1, Kling 3.0, Seedance, FLUX.2, Nano Banana Pro, Seedream 4.5 under one auth + one call pattern.
 - **Accounts:** none. Anonymous, cookie-scoped sessions.
 - **Cost model:** bring-your-own fal key. We pay for zero inference.
@@ -23,12 +24,15 @@
 Everything downstream is judged against this section. Agents resolve ambiguity by re-reading it, not by inventing.
 
 ### North star
+
 > A person with an idea and a fal key gets a beautiful image in under 30 seconds and a beautiful video in under 3 minutes, having made at most three decisions.
 
 ### The core loop (the only loop that matters)
+
 ```
 LOOK  →  SAY  →  GO  →  WATCH  →  KEEP
 ```
+
 1. **Look** — pick a visual direction from a gallery of live examples, not a dropdown of model IDs.
 2. **Say** — one prompt field. Everything else is optional and collapsed.
 3. **Go** — one primary button. Always enabled or clearly explaining why not.
@@ -36,19 +40,22 @@ LOOK  →  SAY  →  GO  →  WATCH  →  KEEP
 5. **Keep** — result lands in a library that survives refresh, downloads in one tap, shares by link.
 
 ### Design principles
-| Principle | Consequence |
-|---|---|
-| **The output is the interface** | Chrome is near-black and near-silent. Generated media is the only saturated color on screen. |
-| **Hide the model, sell the look** | Users choose "Cinematic Portrait," not `fal-ai/flux-2/pro`. Model IDs live in a registry, surfaced only in an advanced disclosure. |
-| **Never a dead end** | Every failure state names a cause and offers exactly one next action (retry, edit prompt, swap model, fix key). |
-| **The wait is part of the product** | No spinner-only states, ever. Queue position, elapsed time, staged copy, blur-up reveal. |
-| **Thumb-first** | Every primary action on mobile sits in the bottom third. Nothing critical hides behind hover. |
-| **Ask for the key last** | A visitor can browse, pick a look, and compose a full prompt before we mention a key. The ask lands at the moment of demonstrated intent. |
+
+| Principle                           | Consequence                                                                                                                               |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **The output is the interface**     | Chrome is near-black and near-silent. Generated media is the only saturated color on screen.                                              |
+| **Hide the model, sell the look**   | Users choose "Cinematic Portrait," not `fal-ai/flux-2/pro`. Model IDs live in a registry, surfaced only in an advanced disclosure.        |
+| **Never a dead end**                | Every failure state names a cause and offers exactly one next action (retry, edit prompt, swap model, fix key).                           |
+| **The wait is part of the product** | No spinner-only states, ever. Queue position, elapsed time, staged copy, blur-up reveal.                                                  |
+| **Thumb-first**                     | Every primary action on mobile sits in the bottom third. Nothing critical hides behind hover.                                             |
+| **Ask for the key last**            | A visitor can browse, pick a look, and compose a full prompt before we mention a key. The ask lands at the moment of demonstrated intent. |
 
 ### Non-goals (v1)
+
 Accounts, payments, teams, node/graph editors, real-time paint canvas, in-app video timeline editing, training/fine-tuning, model comparison arenas.
 
 ### Success criteria
+
 - Landing → first generation started: **≤ 3 interactions** after key entry.
 - LCP < 2.0s on 4G mobile; interaction latency < 100ms on the studio surface.
 - Zero orphaned jobs: every submitted job reaches a terminal state, webhook or no webhook.
@@ -80,17 +87,19 @@ Next.js Route Handlers  ──────────────┐
 **Load-bearing choices, and why:**
 
 - **Server proxy, not browser→fal directly.** The key leaves the browser once, at entry. Every subsequent call is ours, so we can validate params, attach our webhook, and record the job. Note: `@fal-ai/server-proxy`'s stock handler reads `FAL_KEY` from env — we need a custom route handler that resolves the key from the session instead.
-- **Webhook *and* poller.** fal retries a failed webhook up to ~31 times over an hour, but drops deliveries to private IPs permanently and does not follow redirects. A webhook-only design loses jobs. The sweeper polls `…/requests/{id}/status` for any non-terminal job past its backoff. Both paths converge on the same idempotent transition function.
+- **Webhook _and_ poller.** fal retries a failed webhook up to ~31 times over an hour, but drops deliveries to private IPs permanently and does not follow redirects. A webhook-only design loses jobs. The sweeper polls `…/requests/{id}/status` for any non-terminal job past its backoff. Both paths converge on the same idempotent transition function.
 - **Key must be at rest server-side, not cookie-only.** The webhook handler and sweeper need to act on a job with no user request in flight — for status polls and for ingesting results. So: ciphertext in Postgres, session id in the cookie. This is a real tradeoff and is documented as such.
 - **No Redis.** SSE reads job state from Postgres on a short server-side interval. Fewer moving parts; SSE duration limits on serverless are handled by a client that reconnects and falls back to polling with backoff.
 - **We re-host every asset.** fal result URLs expire. The library is worthless if yesterday's images 404.
 
 ### Job state machine
+
 ```
 draft → submitting → queued → running → ingesting → ready
                  ↘         ↘        ↘         ↘
                    failed · canceled · expired
 ```
+
 One pure `transition(job, event) → job | error` function. Illegal transitions throw. Every transition appends to `job_events`. Webhook, sweeper, and cancel all call it — nothing mutates `jobs.status` directly.
 
 ---
@@ -103,9 +112,10 @@ Fourteen specialized agents in four waves. Wave 0 blocks everything. Within a wa
 
 ---
 
-### Wave 0 — Foundation *(blocking, run alone)*
+### Wave 0 — Foundation _(blocking, run alone)_
 
 #### `AGENT-00` — Foundation & Contracts
+
 **Mission:** stand up the skeleton and freeze the interfaces every other agent codes against.
 
 - [ ] Scaffold Next.js App Router + TypeScript strict, `src/` layout, path aliases.
@@ -123,12 +133,13 @@ Fourteen specialized agents in four waves. Wave 0 blocks everything. Within a wa
 
 ---
 
-### Wave 1 — Core Systems *(parallel)*
+### Wave 1 — Core Systems _(parallel)_
 
 #### `AGENT-01` — Design System ("the look")
+
 **Mission:** the dark cinematic language, as reusable primitives. This agent's output determines whether the product reads as premium.
 
-- [ ] Token layer in CSS custom properties: surfaces `#08080A → #141418`, a single accent, 8pt spacing scale, radii, elevation via *tinted* shadow + 1px hairline borders (never gray-on-gray).
+- [ ] Token layer in CSS custom properties: surfaces `#08080A → #141418`, a single accent, 8pt spacing scale, radii, elevation via _tinted_ shadow + 1px hairline borders (never gray-on-gray).
 - [ ] Type scale: one display face for headings/hero (Google Fonts, with a real fallback stack), one high-legibility UI face. Tabular numerals for timers/counters.
 - [ ] Motion language: durations (120/200/320/500ms), one shared easing curve, and the three signature moves — **blur-up reveal** for arriving media, **shimmer-skeleton** for pending tiles, **spring press** for the primary button. Everything respects `prefers-reduced-motion`.
 - [ ] Primitives: `Button` (primary/ghost/danger, loading + disabled-with-reason), `Field`, `Sheet` (bottom on mobile, side on desktop), `Chip`, `Tabs`, `Tooltip`, `Toast`, `Dialog`, `Skeleton`, `Progress`, `EmptyState`, `ErrorState`.
@@ -141,7 +152,8 @@ Fourteen specialized agents in four waves. Wave 0 blocks everything. Within a wa
 ---
 
 #### `AGENT-02` — Model Registry
-**Mission:** turn 600+ fal models into a curated menu of *looks*. This is the "hide the model, sell the look" principle made concrete.
+
+**Mission:** turn 600+ fal models into a curated menu of _looks_. This is the "hide the model, sell the look" principle made concrete.
 
 - [ ] `src/lib/models/registry.ts` — a typed `ModelDescriptor[]`, code not DB.
 - [ ] Per entry: `id` (fal endpoint), `look` (user-facing name), `blurb`, `kind: image|video`, `tier: fast|balanced|max`, `params` (Zod schema), `defaults`, `aspectRatios`, `estSeconds`, `estCostUsd`, `supports: {imageInput, refImages, audio, duration, seed, negativePrompt}`, `sampleAssetKey`.
@@ -158,6 +170,7 @@ Fourteen specialized agents in four waves. Wave 0 blocks everything. Within a wa
 ---
 
 #### `AGENT-03` — Key Vault & Session Security
+
 **Mission:** hold someone else's API key without ever being the reason it leaks. Treat this checklist as a security boundary, not a feature.
 
 - [ ] `sessions` table: `id`, `created_at`, `last_seen_at`, `key_ciphertext`, `key_nonce`, `key_fingerprint`, `key_verified_at`, `key_expires_at`.
@@ -176,6 +189,7 @@ Fourteen specialized agents in four waves. Wave 0 blocks everything. Within a wa
 ---
 
 #### `AGENT-04` — Generation Core
+
 **Mission:** the job lifecycle. The "rock solid" requirement lives or dies here.
 
 - [ ] Schema: `jobs` (id, session_id, kind, look_id, model_id, params jsonb, status, fal_request_id, fal_status, error_code, error_message, attempt, idempotency_key, submitted_at, started_at, completed_at, last_polled_at, next_poll_at) and `job_events` (job_id, at, from_status, to_status, source, data jsonb).
@@ -196,6 +210,7 @@ Fourteen specialized agents in four waves. Wave 0 blocks everything. Within a wa
 ---
 
 #### `AGENT-05` — Asset Pipeline
+
 **Mission:** results that still load next month, and thumbnails that make the grid feel instant.
 
 - [ ] `assets` table: id, job_id, session_id, kind, storage_key, poster_key, mime, width, height, duration_ms, bytes, checksum, source_url, ingested_at.
@@ -211,9 +226,10 @@ Fourteen specialized agents in four waves. Wave 0 blocks everything. Within a wa
 
 ---
 
-### Wave 2 — Experience *(parallel, depends on Wave 1)*
+### Wave 2 — Experience _(parallel, depends on Wave 1)_
 
 #### `AGENT-06` — The Studio
+
 **Mission:** the create surface. This is the product. Judged on whether the core loop actually takes three decisions.
 
 - [ ] Route `/` — hero that is a **live wall of generated output**, not a marketing block. One call to action.
@@ -233,6 +249,7 @@ Fourteen specialized agents in four waves. Wave 0 blocks everything. Within a wa
 ---
 
 #### `AGENT-07` — Realtime & Progress
+
 **Mission:** make a three-minute wait feel supervised rather than abandoned.
 
 - [ ] `GET /api/jobs/[id]/stream` — SSE, server-side polls job state on a short interval, emits status + queue position + elapsed, heartbeats to survive proxies, closes on terminal state.
@@ -248,6 +265,7 @@ Fourteen specialized agents in four waves. Wave 0 blocks everything. Within a wa
 ---
 
 #### `AGENT-08` — Library, Compare & Share
+
 **Mission:** the payoff surface — where output accumulates and leaves the app.
 
 - [ ] Route `/library` — responsive masonry, newest first, cursor-paginated infinite scroll, `content-visibility` for long lists.
@@ -264,13 +282,14 @@ Fourteen specialized agents in four waves. Wave 0 blocks everything. Within a wa
 ---
 
 #### `AGENT-09` — Mobile Experience & First Run
+
 **Mission:** the two things most likely to sink this — phone ergonomics, and the BYOK ask. One agent owns both because they collide on the same first-run screen.
 
 - [ ] Server-side device hint via `userAgent()` from `next/headers` to select the shell variant during SSR — no post-hydration layout flash. Breakpoints and container queries handle everything below that.
 - [ ] Mobile shell: bottom tab bar (Create · Library), bottom-sheet composer with snap points, safe-area insets honored, `100dvh` not `100vh`.
 - [ ] Touch: swipe between results, long-press for actions, pull-to-refresh on library, 44px minimum hit targets, no hover-dependent affordance anywhere.
 - [ ] iOS specifics: `playsInline` on all video, no input zoom (≥16px font on fields), momentum scroll containment inside sheets.
-- [ ] **Key onboarding — the critical path.** A visitor may browse looks and compose a full prompt *before* being asked for anything. On the first `Generate`, a sheet explains in two sentences why a key is needed, links to fal's key page, and takes the paste. Success animates straight into the pending tile — **the generation they asked for starts immediately**, no re-navigation, no re-entry of the prompt.
+- [ ] **Key onboarding — the critical path.** A visitor may browse looks and compose a full prompt _before_ being asked for anything. On the first `Generate`, a sheet explains in two sentences why a key is needed, links to fal's key page, and takes the paste. Success animates straight into the pending tile — **the generation they asked for starts immediately**, no re-navigation, no re-entry of the prompt.
 - [ ] Key state UI: fingerprint chip in the header, one-tap "Forget key," and a clear inline recovery when a key goes invalid mid-session.
 - [ ] Guided first generation: a preselected look and a prompt starter already filled, so `Generate` is genuinely one tap for a first-timer.
 - [ ] Web app manifest, maskable icons, themed status bar. (Service worker is out of scope for v1.)
@@ -280,9 +299,10 @@ Fourteen specialized agents in four waves. Wave 0 blocks everything. Within a wa
 
 ---
 
-### Wave 3 — Hardening *(parallel, after Wave 2)*
+### Wave 3 — Hardening _(parallel, after Wave 2)_
 
 #### `AGENT-10` — Safety & Trust
+
 - [ ] Client + server prompt screening against a maintained blocklist, focused on CSAM, real-person sexual content, and named-individual impersonation. Server-side is authoritative.
 - [ ] Map fal's own content rejections to `CONTENT_REJECTED` with non-accusatory, actionable copy.
 - [ ] Preserve C2PA/provenance metadata where the model emits it; never strip it during ingest.
@@ -291,6 +311,7 @@ Fourteen specialized agents in four waves. Wave 0 blocks everything. Within a wa
 - [ ] First-run disclosure that generation happens on the user's own fal account under fal's terms.
 
 #### `AGENT-11` — Performance & Accessibility
+
 - [ ] Bundle budgets in CI (fail the build on regression); route-level code splitting; RSC by default with client islands only where interaction demands it.
 - [ ] `next/font` self-hosting, preconnect, no layout shift from font swap.
 - [ ] Image/video: correct `sizes`, `priority` only on the hero, lazy everything below the fold, `preload="metadata"` on video.
@@ -300,6 +321,7 @@ Fourteen specialized agents in four waves. Wave 0 blocks everything. Within a wa
 - [ ] Lighthouse CI ≥ 95 on all four categories, mobile and desktop, enforced in the pipeline.
 
 #### `AGENT-12` — Observability & Ops
+
 - [ ] Structured request logging with a correlation id, routed through the vault's redaction serializer.
 - [ ] `/api/health` — DB, storage, and fal reachability, with a degraded (not failing) response shape.
 - [ ] Job metrics: submitted / completed / failed / expired, p50 & p95 duration by model, webhook-vs-sweeper resolution ratio. **A rising sweeper ratio is the early warning that webhooks are broken.**
@@ -308,6 +330,7 @@ Fourteen specialized agents in four waves. Wave 0 blocks everything. Within a wa
 - [ ] `docs/RUNBOOK.md`: stuck jobs, webhook outage, storage full, invalid-key spike, rollback.
 
 #### `AGENT-13` — Documentation & DX
+
 - [ ] `README.md`: what it is, a screenshot, quickstart, env setup, `FAL_MODE=mock` for zero-cost development.
 - [ ] `docs/ADDING_A_MODEL.md` — the one-file registry change, end to end.
 - [ ] `docs/API.md` — every route, its contract, and its error codes.
@@ -338,6 +361,7 @@ Wave 3:  ──────────┴────────┴───�
 **Critical path:** `00 → 04 → 06 → 07`. Everything else can slip a little without moving the ship date.
 
 **The two riskiest checklists,** worth front-loading review on:
+
 1. `AGENT-04`'s webhook-plus-sweeper convergence — it is the whole "rock solid" claim.
 2. `AGENT-09`'s key-onboarding moment — it is where "a few buttons" is won or lost.
 
@@ -346,6 +370,7 @@ Wave 3:  ──────────┴────────┴───�
 ## Part 5 — Verification
 
 **Local:**
+
 ```bash
 pnpm install
 cp .env.example .env.local     # FAL_MODE=mock needs no real key
@@ -354,6 +379,7 @@ pnpm dev
 ```
 
 **Automated:**
+
 ```bash
 pnpm typecheck && pnpm lint
 pnpm test                      # unit: state machine, vault, registry, webhook signature
@@ -362,7 +388,8 @@ pnpm lighthouse                # budgets enforced
 ```
 
 **Must-pass scenarios** (each is an owned, named test):
-1. Cold visitor → pick look → prompt → Generate → key sheet → paste → the *original* request runs → image appears. No step repeated.
+
+1. Cold visitor → pick look → prompt → Generate → key sheet → paste → the _original_ request runs → image appears. No step repeated.
 2. Video job submitted, webhook suppressed → sweeper drives it to `ready` within its backoff window.
 3. Webhook replayed three times → exactly one state transition, one asset.
 4. Webhook with a bad signature, and one with a 6-minute-old timestamp → both rejected, nothing mutated.
