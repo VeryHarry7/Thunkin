@@ -141,16 +141,19 @@ Two details that are load-bearing rather than stylistic:
 
 ## Database ownership
 
-`src/lib/db/schema.ts` is intentionally empty of tables in Wave 0. Each agent
-adds its own module under `src/lib/db/tables/` and re-exports it, so
-`drizzle-kit` sees one schema surface while ownership stays split:
+Each agent adds its own module under `src/lib/db/tables/` and re-exports it
+from `src/lib/db/schema.ts`, so `drizzle-kit` sees one schema surface while
+ownership stays split — four agents never edit one table definition:
 
-| Tables               | Owner    |
-| -------------------- | -------- |
-| `sessions`           | AGENT-03 |
-| `jobs`, `job_events` | AGENT-04 |
-| `assets`             | AGENT-05 |
-| `shares`             | AGENT-08 |
+| Tables               | Owner    | Status  |
+| -------------------- | -------- | ------- |
+| `jobs`, `job_events` | AGENT-04 | landed  |
+| `assets`             | AGENT-05 | landed  |
+| `sessions`           | AGENT-03 | pending |
+| `shares`             | AGENT-08 | pending |
+
+`jobs.session_id` and `assets.session_id` carry no foreign key yet; AGENT-03
+adds the constraint when `sessions` lands.
 
 Indexes that matter, specified now so they are not forgotten later:
 `jobs (session_id, created_at desc)`, `jobs (status, next_poll_at)` — the
@@ -186,11 +189,17 @@ codes against narrow interfaces in `src/lib/ports/` and ships dev-only
 implementations behind them. A sibling replaces **one return statement** in
 `src/lib/ports/index.ts`; nothing else in the codebase moves.
 
-| Port           | Dev stand-in            | Replaced by |
-| -------------- | ----------------------- | ----------- |
-| `LookResolver` | two-entry seed registry | AGENT-02    |
-| `KeyResolver`  | reads `DEV_FAL_KEY`     | AGENT-03    |
-| `IngestPort`   | no-op                   | AGENT-05    |
+| Port           | Implementation               | Status                      |
+| -------------- | ---------------------------- | --------------------------- |
+| `LookResolver` | `src/lib/models/registry.ts` | real (AGENT-02, thin)       |
+| `IngestPort`   | `src/lib/assets/ingest.ts`   | real (AGENT-05, thin)       |
+| `KeyResolver`  | reads `DEV_FAL_KEY`          | stand-in, awaiting AGENT-03 |
+
+Storage follows the same pattern one layer down. `StoragePort` in
+`src/lib/storage/` has a local-disk implementation writing to `.storage/`, and
+that is **development only**: serverless filesystems are ephemeral and
+per-instance, so an asset written by one request would be missing from the
+next. The R2 implementation is the same interface with a different body.
 
 The dev key resolver refuses to run when `FAL_MODE=live`. The guard is on the
 provider mode rather than `NODE_ENV` deliberately: the risk of a shared
