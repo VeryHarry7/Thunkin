@@ -5,7 +5,13 @@ import { defineConfig } from "drizzle-kit";
  * going through `@/lib/env` (which would pull in the whole app's env contract
  * for a CLI that only needs one variable).
  */
-process.loadEnvFile?.(".env.local");
+// loadEnvFile throws when the file is absent, which is a perfectly normal case
+// (CI, or a shell that already exports DATABASE_URL). Missing is not an error.
+try {
+  process.loadEnvFile?.(".env.local");
+} catch {
+  // No .env.local — fall through to whatever the environment already provides.
+}
 
 const url = process.env.DATABASE_URL;
 if (!url) {

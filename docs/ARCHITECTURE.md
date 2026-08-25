@@ -179,6 +179,41 @@ Directives stack: `!slow !fail:TIMEOUT a lighthouse`.
 
 ---
 
+## Ports — how parallel agents avoid blocking each other
+
+AGENT-04 sits on the critical path but needs three things its siblings own. It
+codes against narrow interfaces in `src/lib/ports/` and ships dev-only
+implementations behind them. A sibling replaces **one return statement** in
+`src/lib/ports/index.ts`; nothing else in the codebase moves.
+
+| Port           | Dev stand-in            | Replaced by |
+| -------------- | ----------------------- | ----------- |
+| `LookResolver` | two-entry seed registry | AGENT-02    |
+| `KeyResolver`  | reads `DEV_FAL_KEY`     | AGENT-03    |
+| `IngestPort`   | no-op                   | AGENT-05    |
+
+The dev key resolver refuses to run when `FAL_MODE=live`. The guard is on the
+provider mode rather than `NODE_ENV` deliberately: the risk of a shared
+configured key is that every visitor bills one fal account instead of their
+own, which can only happen with the live adapter. Under `mock` the key is a
+meaningless string, so a production-mode build — which is exactly what the e2e
+suite runs — is free to use it.
+
+## Two subtleties worth knowing before you touch this
+
+**The session cookie's `Secure` flag follows `PUBLIC_URL`, not `NODE_ENV`.**
+A `Secure` cookie sent over plain HTTP is silently discarded by the client, and
+every request then arrives with no session — which looks like data loss rather
+than a cookie problem. A production build served over http (a local
+`next start`, the e2e suite) is a real case. Any genuine deployment has an
+https `PUBLIC_URL`, so this stays strict where it matters.
+
+**The webhook re-reads status from the provider rather than trusting its
+payload.** The delivery tells us _that_ something happened, not what to
+believe. Re-reading means a replayed or reordered delivery cannot move a job
+backwards, and it is why the webhook and sweeper paths cannot drift apart in
+interpretation — both call `advanceJob`.
+
 ## Conventions
 
 - Path alias `@/*` → `src/*`.

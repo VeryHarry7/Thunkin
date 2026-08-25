@@ -45,6 +45,47 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+  integration:
+    name: Integration (real Postgres)
+    runs-on: ubuntu-latest
+    # The reconciler's claim query uses FOR UPDATE SKIP LOCKED, which has no
+    # meaningful behaviour against a fake. These run against the real thing.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: thunkin
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Integration tests
+        run: pnpm test:integration
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/thunkin
+          MASTER_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          SESSION_SECRET: ci-session-secret-not-for-any-real-deployment
+          SWEEP_SECRET: ci-sweep-secret-value
+          PUBLIC_URL: http://localhost:3000
+
   build:
     name: Build
     runs-on: ubuntu-latest

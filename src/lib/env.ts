@@ -54,6 +54,17 @@ const serverSchema = z.object({
 
   FAL_MODE: FalMode.default("mock"),
 
+  /**
+   * A fal key for local development only, so the generation core is runnable
+   * before AGENT-03's vault exists.
+   *
+   * The dev key resolver that reads this **refuses to run in production** — a
+   * real deployment gets its key from the visitor, through the vault, never
+   * from configuration. Listed here so all config is visible in one place, not
+   * because it is a supported production variable.
+   */
+  DEV_FAL_KEY: z.string().optional(),
+
   // Object storage — AGENT-05 consumes these.
   R2_ACCOUNT_ID: z.string().optional(),
   R2_ACCESS_KEY_ID: z.string().optional(),
