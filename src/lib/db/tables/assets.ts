@@ -1,5 +1,6 @@
 import { index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { jobs } from "./jobs";
+import type { JobKind } from "@/lib/contracts";
 
 /**
  * Assets. Owned by AGENT-05.
@@ -16,7 +17,7 @@ export const assets = pgTable(
       .notNull()
       .references(() => jobs.id, { onDelete: "cascade" }),
     sessionId: text("session_id").notNull(),
-    kind: text("kind").$type<"image" | "video">().notNull(),
+    kind: text("kind").$type<JobKind>().notNull(),
 
     /** Opaque storage key. Never leaves the server — see PublicAsset. */
     storageKey: text("storage_key").notNull(),

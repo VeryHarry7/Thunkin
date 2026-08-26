@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Job, JobKind } from "./job";
+import { ApiJob, JobKind } from "./job";
 
 /**
  * A generated result, re-hosted in our own storage.
@@ -65,7 +65,7 @@ export type PublicAsset = z.infer<typeof PublicAsset>;
  * pending tile and a finished one from the same value without branching on
  * whether a field exists.
  */
-export const JobWithAssets = Job.extend({
+export const ApiJobWithAssets = ApiJob.extend({
   assets: z.array(PublicAsset),
 });
-export type JobWithAssets = z.infer<typeof JobWithAssets>;
+export type ApiJobWithAssets = z.infer<typeof ApiJobWithAssets>;

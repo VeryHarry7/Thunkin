@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  ApiJob,
   ContractViolation,
   GenerationParams,
   Job,
@@ -10,6 +11,7 @@ import {
   isTerminal,
   issuesToFields,
   ok,
+  toApiJob,
   parseOrThrow,
 } from "./index";
 import { z } from "zod";
@@ -134,5 +136,55 @@ describe("Job", () => {
 
     expect(job.status).toBe("draft");
     expect(isTerminal(job.status)).toBe(false);
+  });
+});
+
+describe("ApiJob", () => {
+  const job = Job.parse({
+    id: "job_1",
+    sessionId: "sess_secret",
+    kind: "image" as const,
+    lookId: "cinematic-portrait",
+    modelId: "fal-ai/flux-2/pro",
+    params: { prompt: "a lighthouse at dusk" },
+    status: "ready" as const,
+    falRequestId: "req_secret",
+    queuePosition: null,
+    errorCode: null,
+    errorMessage: "x".repeat(500),
+    attempt: 2,
+    idempotencyKey: "idem_secret",
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    submittedAt: new Date("2026-01-01T00:00:01Z"),
+    startedAt: null,
+    completedAt: new Date("2026-01-01T00:00:30Z"),
+    nextPollAt: null,
+  });
+
+  it("omits every piece of server bookkeeping", () => {
+    const wire = toApiJob(job);
+    for (const secret of [
+      "sessionId",
+      "falRequestId",
+      "idempotencyKey",
+      "attempt",
+      "nextPollAt",
+    ]) {
+      expect(secret in wire, secret).toBe(false);
+    }
+  });
+
+  it("serializes dates as ISO strings and caps the error message", () => {
+    const wire = toApiJob(job);
+    expect(wire.createdAt).toBe("2026-01-01T00:00:00.000Z");
+    expect(wire.startedAt).toBeNull();
+    expect(wire.errorMessage).toHaveLength(300);
+  });
+
+  it("survives an actual JSON round-trip against its own schema", () => {
+    // The whole point of the schema: it describes what JSON delivers, so
+    // parsing what JSON delivers must succeed.
+    const wire = JSON.parse(JSON.stringify(toApiJob(job)));
+    expect(ApiJob.parse(wire)).toEqual(toApiJob(job));
   });
 });

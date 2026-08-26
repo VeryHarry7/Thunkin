@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import type { ApiResult, JobWithAssets } from "@/lib/contracts";
+import type { ApiJobWithAssets, ApiResult } from "@/lib/contracts";
 import { isTerminal } from "@/lib/contracts";
 import { ratioToNumber } from "@/lib/models/registry";
 import { MediaTile } from "@/components/ui";
@@ -16,13 +16,13 @@ import s from "./library.module.css";
  * way round.
  */
 export function Library() {
-  const [jobs, setJobs] = useState<JobWithAssets[]>([]);
+  const [jobs, setJobs] = useState<ApiJobWithAssets[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
       const response = await fetch("/api/jobs?limit=100");
-      const body = (await response.json()) as ApiResult<JobWithAssets[]>;
+      const body = (await response.json()) as ApiResult<ApiJobWithAssets[]>;
       if (body.ok) setJobs(body.data);
     } catch {
       // A dropped poll is not worth surfacing; the next one lands.

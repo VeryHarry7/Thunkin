@@ -5,8 +5,9 @@ import {
   err,
   issuesToFields,
   ok,
+  toApiJob,
   type ApiResult,
-  type JobWithAssets,
+  type ApiJobWithAssets,
 } from "@/lib/contracts";
 import { requireSessionId } from "@/lib/session";
 import { ServiceError, submitJob } from "@/lib/jobs/service";
@@ -26,7 +27,7 @@ const SubmitBody = z.object({
 /** Creates and submits a generation. */
 export async function POST(
   request: Request,
-): Promise<NextResponse<ApiResult<JobWithAssets>>> {
+): Promise<NextResponse<ApiResult<ApiJobWithAssets>>> {
   const locked = await requireUnlocked();
   if (locked) return locked;
 
@@ -67,9 +68,15 @@ export async function POST(
     maybeSweep();
 
     const assets = await assetsForJobs([job.id]);
-    return NextResponse.json(ok({ ...job, assets: assets.get(job.id) ?? [] }), {
-      status: 201,
-    });
+    return NextResponse.json(
+      ok({ ...toApiJob(job), assets: assets.get(job.id) ?? [] }),
+      {
+        // A submit that failed on the spot (bad key, provider down) still
+        // returns the job — but calling that "201 Created" would be a status
+        // lie to any client branching on the code rather than the body.
+        status: job.status === "failed" ? 200 : 201,
+      },
+    );
   } catch (error) {
     if (error instanceof ServiceError) {
       // 401 to match the middleware and unlock route: NO_KEY always means "the
@@ -84,7 +91,7 @@ export async function POST(
 /** This session's jobs, newest first, each with whatever it has produced. */
 export async function GET(
   request: Request,
-): Promise<NextResponse<ApiResult<JobWithAssets[]>>> {
+): Promise<NextResponse<ApiResult<ApiJobWithAssets[]>>> {
   const locked = await requireUnlocked();
   if (locked) return locked;
 
@@ -106,6 +113,6 @@ export async function GET(
   const assets = await assetsForJobs(jobs.map((job) => job.id));
 
   return NextResponse.json(
-    ok(jobs.map((job) => ({ ...job, assets: assets.get(job.id) ?? [] }))),
+    ok(jobs.map((job) => ({ ...toApiJob(job), assets: assets.get(job.id) ?? [] }))),
   );
 }

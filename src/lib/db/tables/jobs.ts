@@ -8,7 +8,13 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { GenerationParams, JobErrorCode, JobStatus } from "@/lib/contracts";
+import type {
+  GenerationParams,
+  JobErrorCode,
+  JobKind,
+  JobStatus,
+  TransitionSource,
+} from "@/lib/contracts";
 
 /**
  * Job tables. Owned by AGENT-04.
@@ -34,7 +40,7 @@ export const jobs = pgTable(
      */
     sessionId: text("session_id").notNull(),
 
-    kind: text("kind").$type<"image" | "video">().notNull(),
+    kind: text("kind").$type<JobKind>().notNull(),
     lookId: text("look_id").notNull(),
     modelId: text("model_id").notNull(),
     params: jsonb("params").$type<GenerationParams>().notNull(),
@@ -91,9 +97,7 @@ export const jobEvents = pgTable(
     fromStatus: text("from_status").$type<JobStatus>(),
     toStatus: text("to_status").$type<JobStatus>().notNull(),
 
-    source: text("source")
-      .$type<"client" | "webhook" | "sweeper" | "system">()
-      .notNull(),
+    source: text("source").$type<TransitionSource>().notNull(),
 
     data: jsonb("data").$type<Record<string, unknown>>(),
   },

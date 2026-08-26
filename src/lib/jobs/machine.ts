@@ -19,7 +19,8 @@ import {
  */
 
 /** Which subsystem drove a transition. Recorded on every event. */
-export type TransitionSource = "client" | "webhook" | "sweeper" | "system";
+// Re-exported so the jobs modules keep one import site for machine concepts.
+export type { TransitionSource } from "@/lib/contracts";
 
 export type JobEventInput =
   | { type: "SUBMIT_STARTED" }

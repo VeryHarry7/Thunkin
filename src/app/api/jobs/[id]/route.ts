@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { err, ok, type ApiResult, type JobWithAssets } from "@/lib/contracts";
+import {
+  err,
+  ok,
+  toApiJob,
+  type ApiResult,
+  type ApiJobWithAssets,
+} from "@/lib/contracts";
 import { ownerSessionId } from "@/lib/session";
 import { getJob } from "@/lib/jobs/repo";
 import { assetsForJobs } from "@/lib/assets/repo";
@@ -18,7 +24,7 @@ export const dynamic = "force-dynamic";
 export async function GET(
   _request: Request,
   context: { params: Promise<{ id: string }> },
-): Promise<NextResponse<ApiResult<JobWithAssets>>> {
+): Promise<NextResponse<ApiResult<ApiJobWithAssets>>> {
   const locked = await requireUnlocked();
   if (locked) return locked;
 
@@ -36,7 +42,7 @@ export async function GET(
   maybeSweep();
 
   const assets = await assetsForJobs([job.id]);
-  return NextResponse.json(ok({ ...job, assets: assets.get(job.id) ?? [] }));
+  return NextResponse.json(ok({ ...toApiJob(job), assets: assets.get(job.id) ?? [] }));
 }
 
 /** Removes a generation and the bytes it produced. */

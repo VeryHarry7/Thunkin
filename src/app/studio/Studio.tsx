@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import type { ApiResult, JobWithAssets, ModelDescriptor } from "@/lib/contracts";
+import type { ApiJobWithAssets, ApiResult, ModelDescriptor } from "@/lib/contracts";
 import { isTerminal } from "@/lib/contracts";
 import { ratioToNumber } from "@/lib/models/registry";
 import { Button, Chip, ErrorState, Field, MediaTile } from "@/components/ui";
@@ -63,16 +63,9 @@ const RECOVERY: Record<string, { title: string; body: string; action: string }> 
 const POLL_MIN_MS = 900;
 const POLL_MAX_MS = 6_000;
 
-/**
- * Accepts a string as well as a Date, deliberately.
- *
- * The contract types timestamps as `Date`, but they cross the wire as JSON and
- * arrive as ISO strings — so the client-side type is optimistic. Coercing here
- * keeps this component honest; the real fix is a serialized view type on the
- * contract, raised in docs/handoffs/AGENT-06.md.
- */
-function elapsedLabel(from: Date | string): string {
-  const started = from instanceof Date ? from.getTime() : new Date(from).getTime();
+/** `ApiJob` timestamps are ISO strings — the wire truth, not an optimistic Date. */
+function elapsedLabel(from: string): string {
+  const started = new Date(from).getTime();
   const seconds = Math.max(0, Math.round((Date.now() - started) / 1000));
   if (seconds < 60) return `${seconds}s`;
   return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
@@ -91,7 +84,7 @@ export function Studio({ looks }: { looks: ModelDescriptor[] }) {
   const [ratio, setRatio] = useState(looks[0]?.aspectRatios[0] ?? "1:1");
   const [seed, setSeed] = useState("");
   const [negative, setNegative] = useState("");
-  const [jobs, setJobs] = useState<JobWithAssets[]>([]);
+  const [jobs, setJobs] = useState<ApiJobWithAssets[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   // Re-renders pending tiles once a second so the elapsed timer actually ticks.
@@ -108,7 +101,7 @@ export function Studio({ looks }: { looks: ModelDescriptor[] }) {
   const refresh = useCallback(async () => {
     try {
       const response = await fetch("/api/jobs?limit=40");
-      const body = (await response.json()) as ApiResult<JobWithAssets[]>;
+      const body = (await response.json()) as ApiResult<ApiJobWithAssets[]>;
       if (body.ok) setJobs(body.data);
     } catch {
       // A dropped poll is not worth surfacing; the next one will land.
@@ -182,7 +175,7 @@ export function Studio({ looks }: { looks: ModelDescriptor[] }) {
         }),
       });
 
-      const body = (await response.json()) as ApiResult<JobWithAssets>;
+      const body = (await response.json()) as ApiResult<ApiJobWithAssets>;
 
       if (!body.ok) {
         setSubmitError(body.error.message);

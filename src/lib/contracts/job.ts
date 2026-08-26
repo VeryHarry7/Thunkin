@@ -84,7 +84,7 @@ export const GenerationParams = z.object({
   negativePrompt: z.string().max(2000).optional(),
   /** Width:height, e.g. "16:9". Constrained per-model by the registry. */
   aspectRatio: z.string().optional(),
-  /** Omitted means "pick one" — the server fills it in so results are reproducible. */
+  /** Omitted means the model picks one. The chosen seed is not currently persisted. */
   seed: z.number().int().nonnegative().optional(),
   /** Video only, in seconds. */
   durationSeconds: z.number().positive().max(60).optional(),
@@ -93,6 +93,14 @@ export const GenerationParams = z.object({
 });
 export type GenerationParams = z.infer<typeof GenerationParams>;
 
+/**
+ * Which subsystem drove a transition — key evidence when debugging, and
+ * declared exactly once so adding a source is a one-line change instead of a
+ * three-file scavenger hunt (machine, contract, table all import this).
+ */
+export const TransitionSource = z.enum(["client", "webhook", "sweeper", "system"]);
+export type TransitionSource = z.infer<typeof TransitionSource>;
+
 /** A single recorded transition. The audit trail behind every job. */
 export const JobEvent = z.object({
   id: z.string(),
@@ -100,8 +108,7 @@ export const JobEvent = z.object({
   at: z.date(),
   fromStatus: JobStatus.nullable(),
   toStatus: JobStatus,
-  /** Which subsystem drove the transition — key evidence when debugging. */
-  source: z.enum(["client", "webhook", "sweeper", "system"]),
+  source: TransitionSource,
   data: z.record(z.string(), z.unknown()).nullable(),
 });
 export type JobEvent = z.infer<typeof JobEvent>;
@@ -140,3 +147,54 @@ export const Job = z.object({
   nextPollAt: z.date().nullable(),
 });
 export type Job = z.infer<typeof Job>;
+
+/**
+ * A job as the client receives it.
+ *
+ * Two jobs in one schema, deliberately coupled:
+ *
+ * - **What crosses the boundary.** `sessionId`, `falRequestId`,
+ *   `idempotencyKey`, `attempt` and `nextPollAt` are server bookkeeping and
+ *   are omitted — the same discipline `PublicAsset` applies to storage keys.
+ *   `errorMessage` stays: this is a single-owner service and the provider's
+ *   words are useful to the person paying the bill.
+ * - **How it crosses.** Timestamps are ISO strings here, because that is what
+ *   JSON actually delivers. `Job` types them as `Date` and every client that
+ *   trusted that annotation got a string at runtime; this schema is the wire
+ *   truth, and the client layer parses against it.
+ */
+export const ApiJob = z.object({
+  id: z.string(),
+  kind: JobKind,
+  lookId: z.string(),
+  modelId: z.string(),
+  params: GenerationParams,
+  status: JobStatus,
+  queuePosition: z.number().int().nonnegative().nullable(),
+  errorCode: JobErrorCode.nullable(),
+  errorMessage: z.string().max(300).nullable(),
+  createdAt: z.iso.datetime(),
+  submittedAt: z.iso.datetime().nullable(),
+  startedAt: z.iso.datetime().nullable(),
+  completedAt: z.iso.datetime().nullable(),
+});
+export type ApiJob = z.infer<typeof ApiJob>;
+
+/** The only path from a domain job to the wire. Routes never spread `Job`. */
+export function toApiJob(job: Job): ApiJob {
+  return {
+    id: job.id,
+    kind: job.kind,
+    lookId: job.lookId,
+    modelId: job.modelId,
+    params: job.params,
+    status: job.status,
+    queuePosition: job.queuePosition,
+    errorCode: job.errorCode,
+    errorMessage: job.errorMessage === null ? null : job.errorMessage.slice(0, 300),
+    createdAt: job.createdAt.toISOString(),
+    submittedAt: job.submittedAt?.toISOString() ?? null,
+    startedAt: job.startedAt?.toISOString() ?? null,
+    completedAt: job.completedAt?.toISOString() ?? null,
+  };
+}
