@@ -22,15 +22,36 @@ const QUEUE_BASE = "https://queue.fal.run";
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 /**
+ * Whether a rejection is really "your account cannot spend right now".
+ *
+ * fal reports an exhausted balance as **403 with an explanatory body**, not
+ * the 402 the status code alone would suggest. Reading the status only, an
+ * empty wallet is indistinguishable from a bad key — and the UI would tell
+ * you to go check a key that is working perfectly. Observed body:
+ *
+ *   {"detail":"User is locked. Reason: Exhausted balance. Top up your
+ *    balance at fal.ai/dashboard/billing."}
+ */
+function looksLikeBillingLock(body: unknown): boolean {
+  const text = typeof body === "string" ? body : JSON.stringify(body ?? "");
+  return /exhausted balance|top up|billing|insufficient (funds|balance|credit)/i.test(
+    text,
+  );
+}
+
+/**
  * HTTP status onto the closed error taxonomy.
  *
  * Every branch lands on a code that has exactly one recovery action in the UI.
  * Resist adding a catch-all here — an unmapped status becoming MODEL_ERROR
  * ("retry, or swap look") is a deliberate, safe default.
  */
-function codeForStatus(status: number): JobErrorCode {
-  if (status === 401 || status === 403) return "INVALID_KEY";
+function codeForStatus(status: number, body?: unknown): JobErrorCode {
   if (status === 402) return "INSUFFICIENT_CREDIT";
+  if (status === 401 || status === 403) {
+    // Same status, two entirely different fixes: top up, or replace the key.
+    return looksLikeBillingLock(body) ? "INSUFFICIENT_CREDIT" : "INVALID_KEY";
+  }
   if (status === 429) return "RATE_LIMITED";
   if (status === 422 || status === 400) return "CONTENT_REJECTED";
   return "MODEL_ERROR";
@@ -98,7 +119,7 @@ export function createFalProvider(fetchImpl: FetchLike = fetch): Provider {
     const body = await readBody(response);
 
     if (!response.ok) {
-      const code = codeForStatus(response.status);
+      const code = codeForStatus(response.status, body);
       throw new ProviderError(
         code,
         messageFromBody(body, `The generation service returned ${response.status}.`),

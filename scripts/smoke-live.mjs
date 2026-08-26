@@ -138,12 +138,43 @@ for (const target of targets) {
   }
 }
 
-if (failures.length > 0) {
-  console.log(
-    `${failures.length} endpoint(s) need fixing in src/lib/models/registry.ts:`,
+/**
+ * Tells an account problem apart from a wrong endpoint id.
+ *
+ * Every failure used to be reported as "fix this in registry.ts", which sends
+ * you editing model ids that are perfectly correct when the real answer is
+ * "top up your balance" or "this key is wrong". A verdict that blames the
+ * wrong thing is worse than no verdict.
+ */
+function isAccountProblem(reason) {
+  return /exhausted balance|top up|billing|user is locked|unauthor|forbidden|invalid.*(key|credential)/i.test(
+    reason,
   );
-  for (const [endpoint, reason] of failures) console.log(`  ${endpoint} — ${reason}`);
-  process.exit(1);
 }
 
-console.log("All smoked endpoints work. The registry ids are real.");
+if (failures.length > 0) {
+  const accountProblems = failures.filter(([, reason]) => isAccountProblem(reason));
+
+  if (accountProblems.length === failures.length) {
+    console.log(
+      "Every endpoint failed the same way, which points at the account rather\n" +
+        "than the registry — the key reached fal and fal declined it:\n",
+    );
+    for (const [, reason] of failures.slice(0, 1)) console.log(`  ${reason}\n`);
+    console.log(
+      "Fix that (top up, or check FAL_KEY), then run this again. The model ids\n" +
+        "are still unverified either way — nothing got far enough to test them.",
+    );
+  } else {
+    console.log(
+      `${failures.length} endpoint(s) failed — the ones below need checking in src/lib/models/registry.ts:`,
+    );
+    for (const [endpoint, reason] of failures) console.log(`  ${endpoint} — ${reason}`);
+  }
+
+  // Not process.exit(): on Windows that trips a libuv assertion when handles
+  // are still closing. Setting the code lets the loop drain and exit cleanly.
+  process.exitCode = 1;
+} else {
+  console.log("All smoked endpoints work. The registry ids are real.");
+}

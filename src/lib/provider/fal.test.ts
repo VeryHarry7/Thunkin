@@ -211,6 +211,47 @@ describe("cancel", () => {
   });
 });
 
+describe("error mapping", () => {
+  const submit = async (impl: Parameters<typeof createFalProvider>[0]) =>
+    createFalProvider(impl)
+      .submit(SUBMIT)
+      .catch((error: unknown) => error);
+
+  it("reads an exhausted balance as INSUFFICIENT_CREDIT, not a bad key", async () => {
+    // fal returns 403 — not 402 — for an empty wallet. Verbatim body from a
+    // real run; mapping it to INVALID_KEY told the owner to go fix a key that
+    // was working, while the correct "top up" copy sat unreachable.
+    const { impl } = stubFetch(
+      jsonResponse(
+        {
+          detail:
+            "User is locked. Reason: Exhausted balance. Top up your balance at fal.ai/dashboard/billing.",
+        },
+        403,
+      ),
+    );
+
+    const error = await submit(impl);
+    expect(error).toBeInstanceOf(ProviderError);
+    expect((error as ProviderError).code).toBe("INSUFFICIENT_CREDIT");
+  });
+
+  it("still reads a plain 403 as INVALID_KEY", async () => {
+    const { impl } = stubFetch(jsonResponse({ detail: "Forbidden" }, 403));
+    expect(((await submit(impl)) as ProviderError).code).toBe("INVALID_KEY");
+  });
+
+  it("still reads a 401 as INVALID_KEY", async () => {
+    const { impl } = stubFetch(jsonResponse({ detail: "Unauthorized" }, 401));
+    expect(((await submit(impl)) as ProviderError).code).toBe("INVALID_KEY");
+  });
+
+  it("reads a 402 as INSUFFICIENT_CREDIT regardless of body", async () => {
+    const { impl } = stubFetch(jsonResponse({ detail: "Payment required" }, 402));
+    expect(((await submit(impl)) as ProviderError).code).toBe("INSUFFICIENT_CREDIT");
+  });
+});
+
 describe("toResultPayload", () => {
   it("reads an image result", () => {
     const payload = toResultPayload({
