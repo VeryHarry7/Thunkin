@@ -77,13 +77,26 @@ test("the reconciler poke stays reachable without a cookie", async ({ request })
   // and a script poking it has no cookie. This assertion exists because the
   // gate did lock it out once — every spec elsewhere runs unlocked, so nothing
   // else here would have noticed.
-  const response = await request.get("/api/internal/sweep?secret=e2e-sweep-secret");
+  const response = await request.get("/api/internal/sweep", {
+    headers: { authorization: "Bearer e2e-sweep-secret" },
+  });
   expect(response.status()).toBe(200);
   expect((await response.json()).ok).toBe(true);
 });
 
 test("the reconciler poke still refuses a wrong secret", async ({ request }) => {
   // Exempt from the gate is not exempt from authentication.
-  const response = await request.get("/api/internal/sweep?secret=not-the-secret");
+  const response = await request.get("/api/internal/sweep", {
+    headers: { authorization: "Bearer not-the-secret" },
+  });
+  expect(response.status()).toBe(401);
+});
+
+test("the reconciler poke refuses a secret in the query string", async ({
+  request,
+}) => {
+  // Query strings land in logs and histories; the header is the only accepted
+  // carrier. This pins the removal so the convenient arm doesn't creep back.
+  const response = await request.get("/api/internal/sweep?secret=e2e-sweep-secret");
   expect(response.status()).toBe(401);
 });

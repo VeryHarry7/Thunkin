@@ -1,85 +1,98 @@
+import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
+import { err, type ApiResult } from "@/lib/contracts";
 import { env } from "@/lib/env";
-import { signValue, timingSafeEqualString, verifySignedValue } from "./signing";
+import { secretsEqual } from "./signing";
+import {
+  UNLOCK_COOKIE,
+  UNLOCK_MAX_AGE_SECONDS,
+  mintUnlockValue,
+  verifyUnlockValue,
+} from "./unlock-cookie";
 
 /**
- * The passphrase gate.
+ * The passphrase gate, bound to the environment.
  *
  * One shared secret is the entire access boundary for this service. That is
  * proportionate — it runs on a home network and the only thing behind it is
  * your own generations — but it is worth being clear-eyed: anyone on the
  * network who has the passphrase can spend money on `FAL_KEY`.
- */
-
-export const UNLOCK_COOKIE = "thunkin_unlocked";
-
-/** A year. You should not have to think about this again once you are in. */
-export const UNLOCK_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
-
-/**
- * The cookie payload.
  *
- * Includes a hash-free marker plus the issue time, so the value is not simply
- * a constant string that could be lifted from one device and replayed forever
- * without any record of when it was minted.
+ * The cookie mechanics live in `unlock-cookie.ts`, which takes secrets as
+ * arguments so Edge middleware can share them without dragging in the env
+ * contract. This module is the Node-side wrapper that reads `env`.
  */
-function payload(now: Date): string {
-  return `unlocked:${now.getTime()}`;
-}
+
+export { UNLOCK_COOKIE, UNLOCK_MAX_AGE_SECONDS };
 
 export async function mintUnlockCookie(now: Date = new Date()): Promise<string> {
-  return signValue(payload(now), env.SESSION_SECRET);
+  return mintUnlockValue(env.SESSION_SECRET, env.APP_PASSPHRASE, now);
 }
 
-/** True when the cookie carries a valid signature from this deployment. */
+/** True when the cookie is validly signed, unexpired, and minted under the current passphrase. */
 export async function isUnlocked(cookieValue: string | undefined): Promise<boolean> {
-  const value = await verifySignedValue(cookieValue, env.SESSION_SECRET);
-  return value !== null && value.startsWith("unlocked:");
+  return verifyUnlockValue(cookieValue, env.SESSION_SECRET, env.APP_PASSPHRASE);
 }
 
-/** Constant-time passphrase check. */
-export function passphraseMatches(candidate: string): boolean {
-  return timingSafeEqualString(candidate, env.APP_PASSPHRASE);
+/** Constant-time passphrase check that does not leak the passphrase's length. */
+export async function passphraseMatches(candidate: string): Promise<boolean> {
+  return secretsEqual(candidate, env.APP_PASSPHRASE);
+}
+
+/**
+ * Defense in depth for private route handlers.
+ *
+ * Middleware already gates everything, but a gate with a single hinge fails
+ * completely when that hinge does — one typo in the exemption list, or a
+ * framework bypass, and every route is open. Each private handler calls this
+ * first, so a middleware failure degrades to "two checks agree" rather than
+ * "no check at all". Returns the same 401 the middleware would, or null to
+ * proceed.
+ */
+export async function requireUnlocked(): Promise<NextResponse<
+  ApiResult<never>
+> | null> {
+  const jar = await cookies();
+  if (await isUnlocked(jar.get(UNLOCK_COOKIE)?.value)) return null;
+
+  return NextResponse.json(err("NO_KEY", "Locked."), { status: 401 });
 }
 
 /* ========================================================================
  * Attempt limiting
  *
- * A single long-running process makes this trivial — one Map, no Redis, no
- * table. It turns a guessable passphrase from "eventually" into "not by brute
- * force", which is the only thing rate limiting can honestly promise.
+ * One global bucket, deliberately not keyed on anything the caller sends.
+ * The previous version keyed on `x-forwarded-for`, which — with no proxy in
+ * front of this service — is entirely attacker-supplied: rotating it per
+ * request bought unlimited guesses. A single-user service has no legitimate
+ * concurrent-strangers case to distinguish, so one bucket is not a
+ * compromise; it is the correct shape. Memory is bounded by construction.
  * ===================================================================== */
 
 const MAX_ATTEMPTS = 8;
 const WINDOW_MS = 10 * 60_000;
 
-interface Attempts {
-  count: number;
-  firstAt: number;
+let failures: { count: number; firstAt: number } | null = null;
+
+export function attemptsRemaining(now: number = Date.now()): number {
+  if (!failures || now - failures.firstAt > WINDOW_MS) return MAX_ATTEMPTS;
+  return Math.max(0, MAX_ATTEMPTS - failures.count);
 }
 
-const attempts = new Map<string, Attempts>();
-
-export function attemptsRemaining(ip: string, now: number = Date.now()): number {
-  const record = attempts.get(ip);
-  if (!record || now - record.firstAt > WINDOW_MS) return MAX_ATTEMPTS;
-  return Math.max(0, MAX_ATTEMPTS - record.count);
-}
-
-export function recordFailedAttempt(ip: string, now: number = Date.now()): void {
-  const record = attempts.get(ip);
-  if (!record || now - record.firstAt > WINDOW_MS) {
-    attempts.set(ip, { count: 1, firstAt: now });
+export function recordFailedAttempt(now: number = Date.now()): void {
+  if (!failures || now - failures.firstAt > WINDOW_MS) {
+    failures = { count: 1, firstAt: now };
     return;
   }
-  record.count += 1;
+  failures.count += 1;
 }
 
 /** A correct passphrase clears the record — you are evidently not an attacker. */
-export function clearAttempts(ip: string): void {
-  attempts.delete(ip);
+export function clearAttempts(): void {
+  failures = null;
 }
 
 /** Test seam. */
 export function resetAttempts(): void {
-  attempts.clear();
+  failures = null;
 }

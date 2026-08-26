@@ -150,7 +150,9 @@ test.describe("sweep endpoint", () => {
   });
 
   test("runs for a caller with the shared secret", async ({ request }) => {
-    const response = await request.get("/api/internal/sweep?secret=e2e-sweep-secret");
+    const response = await request.get("/api/internal/sweep", {
+      headers: { authorization: "Bearer e2e-sweep-secret" },
+    });
     expect(response.status()).toBe(200);
     expect((await response.json()).ok).toBe(true);
   });

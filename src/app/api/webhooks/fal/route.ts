@@ -20,18 +20,27 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request): Promise<NextResponse> {
   const rawBody = new Uint8Array(await request.arrayBuffer());
 
-  const verification = await verifyFalWebhook({
-    headers: request.headers,
-    rawBody,
-  });
+  let verification;
+  try {
+    verification = await verifyFalWebhook({ headers: request.headers, rawBody });
+  } catch (error) {
+    // JWKS unreachable with an empty cache — the one path that used to throw
+    // straight out of the handler. 503 tells fal to retry a transient outage.
+    console.warn(
+      "[webhook] verification unavailable:",
+      error instanceof Error ? error.message : String(error),
+    );
+    return NextResponse.json({ ok: false }, { status: 503 });
+  }
 
   if (!verification.ok) {
     // 401 rather than 400: this is an authentication failure, and fal should
-    // not retry a delivery we will never accept.
-    return NextResponse.json(
-      { ok: false, reason: verification.reason },
-      { status: 401 },
-    );
+    // not retry a delivery we will never accept. The reason stays server-side —
+    // this route is reachable without a cookie, and detailed rejections would
+    // hand an unauthenticated prober a diagnostic oracle (clock skew, JWKS
+    // health) one warn line at a time.
+    console.warn("[webhook] rejected:", verification.reason);
+    return NextResponse.json({ ok: false }, { status: 401 });
   }
 
   const payload = parseWebhookBody(rawBody);

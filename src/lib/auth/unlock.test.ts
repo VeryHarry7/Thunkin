@@ -51,41 +51,43 @@ describe("the cookie", () => {
 });
 
 describe("the passphrase", () => {
-  it("accepts the configured passphrase", () => {
-    expect(passphraseMatches("test-passphrase")).toBe(true);
+  it("accepts the configured passphrase", async () => {
+    expect(await passphraseMatches("test-passphrase")).toBe(true);
   });
 
-  it("rejects anything else, including prefixes and empties", () => {
+  it("rejects anything else, including prefixes and empties", async () => {
     for (const wrong of ["", "test", "test-passphrase ", "TEST-PASSPHRASE", "x"]) {
-      expect(passphraseMatches(wrong)).toBe(false);
+      expect(await passphraseMatches(wrong)).toBe(false);
     }
   });
 });
 
 describe("attempt limiting", () => {
   it("counts down and eventually refuses", () => {
-    expect(attemptsRemaining("1.2.3.4")).toBe(8);
+    expect(attemptsRemaining()).toBe(8);
 
-    for (let i = 0; i < 8; i++) recordFailedAttempt("1.2.3.4");
-    expect(attemptsRemaining("1.2.3.4")).toBe(0);
+    for (let i = 0; i < 8; i++) recordFailedAttempt();
+    expect(attemptsRemaining()).toBe(0);
   });
 
-  it("keeps callers independent", () => {
-    for (let i = 0; i < 8; i++) recordFailedAttempt("1.2.3.4");
-    expect(attemptsRemaining("5.6.7.8")).toBe(8);
+  it("is one global bucket — a spoofed identity buys nothing", () => {
+    // The limiter deliberately keys on nothing the caller sends. The previous
+    // per-IP version could be reset per request via x-forwarded-for.
+    for (let i = 0; i < 8; i++) recordFailedAttempt();
+    expect(attemptsRemaining()).toBe(0);
   });
 
   it("forgives once the window passes", () => {
     const start = 1_000_000;
-    for (let i = 0; i < 8; i++) recordFailedAttempt("1.2.3.4", start);
-    expect(attemptsRemaining("1.2.3.4", start)).toBe(0);
+    for (let i = 0; i < 8; i++) recordFailedAttempt(start);
+    expect(attemptsRemaining(start)).toBe(0);
 
-    expect(attemptsRemaining("1.2.3.4", start + 11 * 60_000)).toBe(8);
+    expect(attemptsRemaining(start + 11 * 60_000)).toBe(8);
   });
 
   it("clears on success — a correct passphrase is not an attack", () => {
-    for (let i = 0; i < 5; i++) recordFailedAttempt("1.2.3.4");
-    clearAttempts("1.2.3.4");
-    expect(attemptsRemaining("1.2.3.4")).toBe(8);
+    for (let i = 0; i < 5; i++) recordFailedAttempt();
+    clearAttempts();
+    expect(attemptsRemaining()).toBe(8);
   });
 });

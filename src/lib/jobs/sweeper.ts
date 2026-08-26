@@ -44,9 +44,15 @@ export async function sweep(
       const advanced = await advanceJob(job, "sweeper");
       if (advanced.status !== job.status) result.advanced++;
       if (isTerminal(advanced.status)) result.settled++;
-    } catch {
+    } catch (error) {
       // One bad job must never abort the batch — that is how a single
-      // poison-pill request starves every other job in the queue.
+      // poison-pill request starves every other job in the queue. But a
+      // swallowed error is invisible, and this was the one place a repeatedly
+      // failing job could fail in silence forever.
+      console.error(
+        `[sweep] job ${job.id} failed:`,
+        error instanceof Error ? error.message : String(error),
+      );
       result.errors++;
     }
   }

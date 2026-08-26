@@ -55,6 +55,23 @@ export function timingSafeEqualString(a: string, b: string): boolean {
   return diff === 0;
 }
 
+/**
+ * Compares two secrets without leaking their length.
+ *
+ * `timingSafeEqualString` short-circuits on length, which is fine for
+ * signatures (fixed, public length) but observable for a passphrase. Hashing
+ * both sides first makes every comparison run over 32 bytes regardless of
+ * what was typed.
+ */
+export async function secretsEqual(a: string, b: string): Promise<boolean> {
+  const [digestA, digestB] = await Promise.all(
+    [a, b].map(async (value) =>
+      toBase64Url(await crypto.subtle.digest("SHA-256", encoder.encode(value))),
+    ),
+  );
+  return timingSafeEqualString(digestA!, digestB!);
+}
+
 /** Returns the value only when the signature checks out. */
 export async function verifySignedValue(
   cookie: string | undefined,

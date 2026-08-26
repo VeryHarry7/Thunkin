@@ -13,6 +13,7 @@ import { ServiceError, submitJob } from "@/lib/jobs/service";
 import { listJobs } from "@/lib/jobs/repo";
 import { assetsForJobs } from "@/lib/assets/repo";
 import { maybeSweep } from "@/lib/jobs/sweeper";
+import { requireUnlocked } from "@/lib/auth/unlock";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,9 @@ const SubmitBody = z.object({
 export async function POST(
   request: Request,
 ): Promise<NextResponse<ApiResult<JobWithAssets>>> {
+  const locked = await requireUnlocked();
+  if (locked) return locked;
+
   const sessionId = await requireSessionId();
 
   let body: unknown;
@@ -68,7 +72,9 @@ export async function POST(
     });
   } catch (error) {
     if (error instanceof ServiceError) {
-      const status = error.code === "NO_KEY" ? 403 : 400;
+      // 401 to match the middleware and unlock route: NO_KEY always means "the
+      // credential this needs is not there", whichever layer says it.
+      const status = error.code === "NO_KEY" ? 401 : 400;
       return NextResponse.json(err(error.code, error.message), { status });
     }
     throw error;
@@ -79,6 +85,9 @@ export async function POST(
 export async function GET(
   request: Request,
 ): Promise<NextResponse<ApiResult<JobWithAssets[]>>> {
+  const locked = await requireUnlocked();
+  if (locked) return locked;
+
   const sessionId = await requireSessionId();
   const url = new URL(request.url);
 

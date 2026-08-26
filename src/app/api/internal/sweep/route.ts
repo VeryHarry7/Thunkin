@@ -17,10 +17,11 @@ export const dynamic = "force-dynamic";
  */
 
 function authorized(request: Request): boolean {
+  // Header only, never a query parameter: query strings land in access logs,
+  // shell history, and browser history, and this secret is the route's whole
+  // credential.
   const provided =
-    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
-    new URL(request.url).searchParams.get("secret") ??
-    "";
+    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
 
   const a = Buffer.from(provided);
   const b = Buffer.from(env.SWEEP_SECRET);

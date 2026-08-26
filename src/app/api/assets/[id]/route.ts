@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ownerSessionId } from "@/lib/session";
 import { getAsset } from "@/lib/assets/repo";
 import { getStorage } from "@/lib/storage";
+import { requireUnlocked } from "@/lib/auth/unlock";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,9 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse | Response> {
+  const locked = await requireUnlocked();
+  if (locked) return locked;
+
   const { id } = await context.params;
   const sessionId = await ownerSessionId();
 

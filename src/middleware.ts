@@ -1,20 +1,31 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { UNLOCK_COOKIE } from "@/lib/auth/unlock";
-import { verifySignedValue } from "@/lib/auth/signing";
+import { UNLOCK_COOKIE, verifyUnlockValue } from "@/lib/auth/unlock-cookie";
 
 /**
  * The passphrase gate.
  *
- * Runs on the Edge runtime, so it cannot import `@/lib/env` (which validates a
- * Node-shaped environment) or Node's `crypto`. It reads `SESSION_SECRET`
- * directly and verifies with Web Crypto instead.
+ * Runs on the Edge runtime, so it imports only `unlock-cookie.ts` and the Web
+ * Crypto signing helpers — never `@/lib/env`, whose Node-shaped validation
+ * (DATABASE_URL and friends) has no business crashing the gate. Secrets are
+ * read from `process.env` directly.
  *
  * Everything is closed by default. The exemptions below are deliberate and
  * short; adding to that list is how a gate quietly stops being one.
  */
 
-/** Paths that must work without a cookie, and why each one has to. */
-function isExempt(pathname: string): boolean {
+/**
+ * Paths that must work without a cookie, and why each one has to.
+ *
+ * Exported for its unit tests: this table is the whole access boundary, and a
+ * boundary nobody tests is a boundary nobody notices breaking.
+ */
+export function isExempt(pathname: string): boolean {
+  // Prefix exemptions on a path that still contains traversal or an encoded
+  // dot/slash are the classic bypass shape (`/looks/%2e%2e/api/jobs`). Next
+  // normalizes before matching routes, but this check must not depend on that:
+  // anything that even looks like an escape is simply not exempt.
+  if (pathname.includes("..") || /%2e|%2f|%5c/i.test(pathname)) return false;
+
   // fal authenticates with an ED25519 signature over the request body, which
   // is a stronger proof than any cookie — and it will never have a cookie to
   // send. Verification happens inside the route itself.
@@ -29,33 +40,68 @@ function isExempt(pathname: string): boolean {
   // The gate itself, or there is no way through it.
   if (pathname === "/unlock" || pathname === "/api/unlock") return true;
 
-  // Static assets and build output. These carry nothing private, and blocking
-  // them would leave the unlock page unstyled.
-  if (pathname.startsWith("/_next/")) return true;
+  // Committed sample images and mock fixtures — nothing private, and the mock
+  // ingest path fetches /fixtures/ back through PUBLIC_URL with no cookie.
+  // (Build output under /_next/static and /_next/image is excluded by the
+  // matcher below; no broader /_next/ exemption exists on purpose.)
   if (pathname.startsWith("/looks/") || pathname.startsWith("/fixtures/")) return true;
   if (pathname === "/favicon.ico" || pathname === "/manifest.webmanifest") return true;
 
   return false;
 }
 
+/**
+ * Whether the request's Host header is one this deployment answers to.
+ *
+ * A hostile web page can DNS-rebind its own domain onto this box's LAN
+ * address and then read the API as same-origin — the one remote attack that
+ * survives "the attacker is not on your network". Binding to the configured
+ * host (plus loopback for dev) closes it. Unset or unparseable PUBLIC_URL
+ * skips the check rather than locking the owner out of a misconfigured box.
+ */
+function hostAllowed(
+  hostHeader: string | null,
+  publicUrl: string | undefined,
+): boolean {
+  if (!publicUrl) return true;
+
+  let expected: URL;
+  try {
+    expected = new URL(publicUrl);
+  } catch {
+    return true;
+  }
+
+  if (!hostHeader) return false;
+  if (hostHeader === expected.host) return true;
+
+  // Loopback names on any port keep `pnpm dev` and the e2e server reachable
+  // regardless of which of the interchangeable local names the browser used.
+  const hostname = hostHeader.replace(/:\d+$/, "");
+  return ["localhost", "127.0.0.1", "[::1]"].includes(hostname);
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+
+  if (!hostAllowed(request.headers.get("host"), process.env.PUBLIC_URL)) {
+    return new NextResponse("Wrong host.", { status: 403 });
+  }
 
   if (isExempt(pathname)) return NextResponse.next();
 
   const secret = process.env.SESSION_SECRET;
-  if (!secret) {
-    // Refuse rather than fail open. A missing secret means we cannot verify
+  const passphrase = process.env.APP_PASSPHRASE;
+  if (!secret || !passphrase) {
+    // Refuse rather than fail open. Missing secrets mean we cannot verify
     // anything, and serving the app anyway would be the worst possible answer.
     return new NextResponse("Server is not configured.", { status: 500 });
   }
 
-  const value = await verifySignedValue(
-    request.cookies.get(UNLOCK_COOKIE)?.value,
-    secret,
-  );
-
-  if (value?.startsWith("unlocked:")) return NextResponse.next();
+  const cookie = request.cookies.get(UNLOCK_COOKIE)?.value;
+  if (await verifyUnlockValue(cookie, secret, passphrase)) {
+    return NextResponse.next();
+  }
 
   // An API call gets a status it can act on; a page gets sent to the gate.
   // Redirecting an API call would hand the client an HTML login page where it
@@ -75,7 +121,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Everything except Next's internals; the exemption list above does the rest
-  // of the work, in one place where it can be read and audited.
+  // Everything except Next's static build output; the exemption list above
+  // does the rest of the work, in one place where it can be read and audited.
   matcher: ["/((?!_next/static|_next/image).*)"],
 };

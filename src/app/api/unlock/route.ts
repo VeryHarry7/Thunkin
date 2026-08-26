@@ -15,21 +15,20 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * Identifies a caller for rate limiting.
- *
- * On a LAN this is a real client address rather than a proxy's. Behind a
- * reverse proxy it would need the forwarded header to be trustworthy, which on
- * a home network it effectively is.
+ * Every failed attempt pays this before the response leaves. Combined with the
+ * global 8-attempts-per-10-minutes bucket it makes brute force arithmetic
+ * silly, and unlike the bucket it cannot be reset by anything a caller sends —
+ * there is no key to spoof because there is no key at all.
  */
-function callerIp(request: Request): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  return forwarded?.split(",")[0]?.trim() || "local";
+const FAILURE_DELAY_MS = 300;
+
+async function failureDelay(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, FAILURE_DELAY_MS));
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const ip = callerIp(request);
-
-  if (attemptsRemaining(ip) <= 0) {
+  if (attemptsRemaining() <= 0) {
+    await failureDelay();
     return NextResponse.json(
       {
         ok: false,
@@ -52,9 +51,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     // little to an attacker.
   }
 
-  if (!passphraseMatches(passphrase)) {
-    recordFailedAttempt(ip);
-    const left = attemptsRemaining(ip);
+  if (!(await passphraseMatches(passphrase))) {
+    recordFailedAttempt();
+    const left = attemptsRemaining();
+    await failureDelay();
 
     return NextResponse.json(
       {
@@ -71,7 +71,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  clearAttempts(ip);
+  clearAttempts();
 
   const response = NextResponse.json({ ok: true, data: { unlocked: true } });
   response.cookies.set(UNLOCK_COOKIE, await mintUnlockCookie(), {

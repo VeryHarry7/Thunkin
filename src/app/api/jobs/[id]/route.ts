@@ -5,6 +5,7 @@ import { getJob } from "@/lib/jobs/repo";
 import { assetsForJobs } from "@/lib/assets/repo";
 import { deleteJob } from "@/lib/assets/delete";
 import { maybeSweep } from "@/lib/jobs/sweeper";
+import { requireUnlocked } from "@/lib/auth/unlock";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,9 @@ export async function GET(
   _request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse<ApiResult<JobWithAssets>>> {
+  const locked = await requireUnlocked();
+  if (locked) return locked;
+
   const { id } = await context.params;
   const sessionId = await ownerSessionId();
 
@@ -40,6 +44,9 @@ export async function DELETE(
   _request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse<ApiResult<{ deleted: boolean }>>> {
+  const locked = await requireUnlocked();
+  if (locked) return locked;
+
   const { id } = await context.params;
   const sessionId = await ownerSessionId();
 
