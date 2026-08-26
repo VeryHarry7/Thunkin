@@ -67,9 +67,13 @@ test("the fal webhook stays reachable without a cookie", async ({ request }) => 
     data: { request_id: "req_forged", status: "OK" },
   });
 
-  // Rejected by signature verification, not by the gate.
+  // Rejected by signature verification, not by the gate: the gate's 401
+  // carries its NO_KEY error envelope, while the webhook route answers with a
+  // deliberately bare body — rejection reasons stay server-side, because this
+  // route is reachable without a cookie and detailed rejections would hand an
+  // unauthenticated prober a diagnostic oracle.
   expect(response.status()).toBe(401);
-  expect(await response.json()).toHaveProperty("reason");
+  expect(await response.json()).toEqual({ ok: false });
 });
 
 test("the reconciler poke stays reachable without a cookie", async ({ request }) => {
