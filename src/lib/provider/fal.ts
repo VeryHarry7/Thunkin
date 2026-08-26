@@ -90,6 +90,25 @@ async function readBody(response: Response): Promise<unknown> {
   }
 }
 
+/**
+ * The queue app a submitted request is tracked under.
+ *
+ * fal takes the submission at the full endpoint path but files the request
+ * against the **base app** — the first two segments. So
+ * `fal-ai/flux/schnell` submits to `.../fal-ai/flux/schnell` and is then
+ * polled at `.../fal-ai/flux/requests/<id>/status`. Appending `/requests` to
+ * the sub-model path instead hits a route that answers **405 with an empty
+ * body**, which reads as a hard MODEL_ERROR and fails a job that was
+ * generating perfectly well.
+ *
+ * Endpoints with no sub-path (`fal-ai/nano-banana-pro`) are unaffected —
+ * which is exactly why this survived every test and only surfaced when a
+ * live smoke finally reached the polling stage.
+ */
+export function queueAppId(endpoint: string): string {
+  return endpoint.split("/").slice(0, 2).join("/");
+}
+
 export function createFalProvider(fetchImpl: FetchLike = fetch): Provider {
   async function call(
     url: string,
@@ -165,7 +184,7 @@ export function createFalProvider(fetchImpl: FetchLike = fetch): Provider {
 
     async status(endpoint, requestId, apiKey): Promise<StatusResult> {
       const body = (await call(
-        `${QUEUE_BASE}/${endpoint}/requests/${requestId}/status`,
+        `${QUEUE_BASE}/${queueAppId(endpoint)}/requests/${requestId}/status`,
         apiKey,
       )) as { status?: string; queue_position?: number };
 
@@ -189,7 +208,7 @@ export function createFalProvider(fetchImpl: FetchLike = fetch): Provider {
 
     async result(endpoint, requestId, apiKey): Promise<ResultPayload> {
       const body = await call(
-        `${QUEUE_BASE}/${endpoint}/requests/${requestId}`,
+        `${QUEUE_BASE}/${queueAppId(endpoint)}/requests/${requestId}`,
         apiKey,
       );
       return toResultPayload(body);
@@ -197,9 +216,13 @@ export function createFalProvider(fetchImpl: FetchLike = fetch): Provider {
 
     async cancel(endpoint, requestId, apiKey): Promise<void> {
       try {
-        await call(`${QUEUE_BASE}/${endpoint}/requests/${requestId}/cancel`, apiKey, {
-          method: "PUT",
-        });
+        await call(
+          `${QUEUE_BASE}/${queueAppId(endpoint)}/requests/${requestId}/cancel`,
+          apiKey,
+          {
+            method: "PUT",
+          },
+        );
       } catch (error) {
         // A job that already finished cannot be cancelled, and that is not a
         // failure worth surfacing — the caller's intent (stop this) is met.

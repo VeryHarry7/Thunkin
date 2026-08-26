@@ -69,17 +69,23 @@ async function submit(endpoint, prompt) {
   return parsed.request_id;
 }
 
+/** Mirrors queueAppId() in src/lib/provider/fal.ts — see the note there. */
+function appId(endpoint) {
+  return endpoint.split("/").slice(0, 2).join("/");
+}
+
 async function waitFor(endpoint, requestId, ceilingMs) {
   const deadline = Date.now() + ceilingMs;
+  const app = appId(endpoint);
 
   while (Date.now() < deadline) {
-    const response = await fetch(`${QUEUE}/${endpoint}/requests/${requestId}/status`, {
+    const response = await fetch(`${QUEUE}/${app}/requests/${requestId}/status`, {
       headers,
     });
     const body = await response.json();
 
     if (body.status === "COMPLETED") {
-      const result = await fetch(`${QUEUE}/${endpoint}/requests/${requestId}`, {
+      const result = await fetch(`${QUEUE}/${app}/requests/${requestId}`, {
         headers,
       });
       return result.json();

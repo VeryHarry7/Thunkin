@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createFalProvider, toResultPayload } from "./fal";
+import { createFalProvider, queueAppId, toResultPayload } from "./fal";
 import { ProviderError } from "./types";
 import type { FetchLike } from "./fal";
 import type { SubmitInput } from "./types";
@@ -207,6 +207,60 @@ describe("cancel", () => {
     const { impl } = stubFetch(jsonResponse({ detail: "nope" }, 500));
     await expect(createFalProvider(impl).cancel("e", "r", KEY)).rejects.toThrow(
       ProviderError,
+    );
+  });
+});
+
+describe("queue app routing", () => {
+  // The bug this pins: fal takes a submission at the full endpoint path but
+  // tracks the request under the base app. Polling the sub-model path returns
+  // 405 with an empty body, so a job that generated fine would be failed as a
+  // MODEL_ERROR. Every earlier test used a single-segment endpoint, so none
+  // of them could see it.
+  const SUB_PATH = "fal-ai/flux/schnell";
+
+  it("derives the base app from any endpoint depth", () => {
+    expect(queueAppId("fal-ai/flux/schnell")).toBe("fal-ai/flux");
+    expect(queueAppId("fal-ai/veo3.1/fast")).toBe("fal-ai/veo3.1");
+    expect(queueAppId("fal-ai/kling-video/v3/pro/text-to-video")).toBe(
+      "fal-ai/kling-video",
+    );
+    // Endpoints with no sub-path are already their own app.
+    expect(queueAppId("fal-ai/nano-banana-pro")).toBe("fal-ai/nano-banana-pro");
+  });
+
+  it("submits to the full endpoint path, sub-model included", async () => {
+    const { impl, calls } = stubFetch(jsonResponse({ request_id: "req_1" }));
+    await createFalProvider(impl).submit({ ...SUBMIT, endpoint: SUB_PATH });
+
+    expect(calls[0]!.url).toContain("/fal-ai/flux/schnell");
+    expect(calls[0]!.url).not.toContain("/requests");
+  });
+
+  it("polls status at the base app, not the sub-model", async () => {
+    const { impl, calls } = stubFetch(jsonResponse({ status: "IN_QUEUE" }));
+    await createFalProvider(impl).status(SUB_PATH, "req_1", KEY);
+
+    expect(calls[0]!.url).toBe(
+      "https://queue.fal.run/fal-ai/flux/requests/req_1/status",
+    );
+  });
+
+  it("fetches the result at the base app", async () => {
+    const { impl, calls } = stubFetch(
+      jsonResponse({ images: [{ url: "https://cdn/x.png", width: 1, height: 1 }] }),
+    );
+    await createFalProvider(impl).result(SUB_PATH, "req_1", KEY);
+
+    expect(calls[0]!.url).toBe("https://queue.fal.run/fal-ai/flux/requests/req_1");
+  });
+
+  it("cancels at the base app", async () => {
+    const { impl, calls } = stubFetch(jsonResponse({}));
+    await createFalProvider(impl).cancel(SUB_PATH, "req_1", KEY);
+
+    expect(calls[0]!.url).toBe(
+      "https://queue.fal.run/fal-ai/flux/requests/req_1/cancel",
     );
   });
 });
