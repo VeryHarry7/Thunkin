@@ -1,10 +1,10 @@
 /**
  * The live smoke test.
  *
- * Every fal endpoint id in the registry was verified as *listed* in fal's
- * catalogue. None has been exercised against the live API — this project runs
- * on FAL_MODE=mock and no key has ever been used. This script is what turns
- * "listed" into "working".
+ * Turns "listed in fal's catalogue" into "actually works". Both image
+ * endpoints have now passed it; the two video endpoints have not been called
+ * for real yet, since the video run costs about a hundred and sixty times what
+ * the image run does.
  *
  * It costs real money: one image and, unless you skip it, one video. The video
  * is the expensive one, so it is opt-in.
@@ -12,8 +12,9 @@
  *   node scripts/smoke-live.mjs            # image only  (~$0.01)
  *   node scripts/smoke-live.mjs --video    # image + video (~$1.50)
  *
- * Reads FAL_KEY from .env.local or the environment. Expect an id or two to be
- * wrong — that is the point of running it.
+ * Reads FAL_KEY from .env.local or the environment. A wrong id, a renamed
+ * field, a queue route that 405s — this is where those surface, and it has
+ * caught all three.
  */
 import { setTimeout as sleep } from "node:timers/promises";
 import { verdict } from "./smoke-verdict.mjs";

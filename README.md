@@ -4,9 +4,11 @@ A private AI image and video studio. Pick a look, type a line, tap once, watch
 it arrive. Runs on your own machine, reachable from your phone on the same
 network, generating on one API key that you pay for.
 
-> **Status:** the whole loop works end to end against fixtures. The four fal
-> model ids are verified as _listed_ in fal's catalogue but have never been
-> called for real — run the live smoke below before trusting them.
+> **Status:** live. The whole loop works end to end, and both image endpoints
+> (`fal-ai/flux/schnell`, `fal-ai/nano-banana-pro`) have generated real images
+> through the live fal API. The two **video** endpoints are still verified only
+> as _listed_ in fal's catalogue — `node scripts/smoke-live.mjs --video` proves
+> them, at roughly $1.60.
 
 ## Quickstart
 
