@@ -176,6 +176,8 @@ degraded by this; the lifecycle was built for it.
 
 **The passphrase is the whole boundary.** Anyone on your network who has it can
 generate, and generating spends money on your key. Pick something real.
+Changing it signs every device out at once — which is also the recovery move
+if a device you don't trust ever held it.
 
 **Plain HTTP is a deliberate choice.** TLS on a LAN means a self-signed
 certificate and a trust prompt on every device — real friction against a threat

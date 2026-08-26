@@ -59,3 +59,28 @@ describe("edges", () => {
     expect(isPubliclyReachable("https://10-0-0-5.example.com")).toBe(true);
   });
 });
+
+describe("boundary cases", () => {
+  it("treats the addresses just outside RFC1918's 172.16/12 as public", () => {
+    // The block is 172.16.0.0 through 172.31.255.255 — one octet either side
+    // is ordinary public space, and an off-by-one here would silently strip
+    // webhooks from a real deployment.
+    expect(isPubliclyReachable("http://172.15.0.1:3000")).toBe(true);
+    expect(isPubliclyReachable("http://172.32.0.1:3000")).toBe(true);
+    expect(isPubliclyReachable("http://172.16.0.1:3000")).toBe(false);
+    expect(isPubliclyReachable("http://172.31.255.255:3000")).toBe(false);
+  });
+
+  it("is unmoved by ports", () => {
+    expect(isPubliclyReachable("http://192.168.1.20:3000")).toBe(false);
+    expect(isPubliclyReachable("https://example.com:8443")).toBe(true);
+  });
+
+  it("handles bracketed IPv6 loopback with a port", () => {
+    expect(isPubliclyReachable("http://[::1]:3000")).toBe(false);
+  });
+
+  it("treats 0.0.0.0 as unreachable from outside", () => {
+    expect(isPubliclyReachable("http://0.0.0.0:3000")).toBe(false);
+  });
+});

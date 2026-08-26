@@ -77,6 +77,12 @@ the second is a no-op. Nothing is degraded when the webhook path is absent —
 that case was designed for, and the integration suite proves a job reaching
 `ready` with no webhook at all.
 
+The reconciler also runs an **orphan pass**: a job that crashed between
+creation and provider acceptance has no request id, so the poll path can never
+see it. `findOrphanedJobs` catches those and expires them past their ceiling —
+"zero orphaned jobs" is a property of this loop, backed by an integration
+test, not an aspiration.
+
 The loop lives in `src/lib/jobs/sweeper.ts` and starts lazily from
 `maybeSweep()`. It is not an instrumentation hook: adding one makes Next
 compile it for the Edge runtime too, where the asset pipeline's `node:fs`
@@ -100,28 +106,40 @@ sessions table. `FAL_KEY` sits in the environment, `serverKeyResolver` reads
 it, and that is the entire story.
 
 What guards it is `APP_PASSPHRASE`: one field at `/unlock`, compared in
-constant time, exchanged for an HMAC-signed cookie good for a year.
+constant time (hashed first, so even the length is not observable), exchanged
+for a signed cookie. The cookie's payload carries a truncated HMAC tag of the
+passphrase and its issue time, both verified on every request — so **rotating
+`APP_PASSPHRASE` logs every device out**, and the one-year lifetime is
+enforced by the server, not politely suggested to the browser.
 `src/middleware.ts` refuses everything else — closed by default, so a route
-added tomorrow is protected before it is written. A missing `SESSION_SECRET`
-returns 500 rather than failing open.
+added tomorrow is protected before it is written. Missing secrets return 500
+rather than failing open, a Host check closes DNS rebinding, and every private
+route handler re-checks the cookie itself (`requireUnlocked`), so one typo in
+the exemption list degrades to "two checks agree" instead of "no check at
+all".
 
-Exemptions are deliberate and short: `/api/webhooks/fal` (authenticated by
-ED25519, and fal will never hold a cookie), `/unlock` itself, and static
-assets.
+Exemptions are deliberate and short: `/api/webhooks/fal` (ED25519-verified,
+and fal will never hold a cookie), `/api/internal/sweep` (its own shared
+secret, header-only — never a query parameter), `/unlock` itself, and static
+assets. Paths containing traversal or encoded escapes are never exempt.
 
-Attempts are rate-limited in memory — trivially correct on a single-process
-box, and it turns a guessable passphrase from "eventually" into "no".
+Failed unlock attempts are limited by **one global in-memory bucket plus a
+fixed delay** — keyed on nothing the caller sends, because anything a caller
+sends, a caller can rotate.
 
 **Stated plainly: anyone on your network who has the passphrase can spend your
 money.** That is the accepted design, not an oversight.
 
 ### The unlocked visitor is the owner
 
-Reads do not filter by session. `jobs.session_id` still records which device
-made a thing, but `getJob`, `listJobs` and `getAsset` ignore it, because your
-phone and your laptop are the same person and a library that differs between
-them is a bug. The parameter survives as `_sessionId` so the seam is visible if
-this ever becomes multi-user again.
+Reads take no session at all: `getJob`, `listJobs` and `getAsset` answer for
+the one owner, because your phone and your laptop are the same person and a
+library that differs between them is a bug. `jobs.session_id` still records
+which device made a thing — provenance on writes, a prefix on storage keys,
+and the scope of the per-device idempotency index — but nothing reads it for
+authorization. If this ever becomes multi-user, adding a parameter back to
+three functions is a ten-minute change; carrying an ignored one everywhere in
+the meantime was the worse deal.
 
 ### We re-host every asset
 
@@ -171,20 +189,27 @@ never fight over the same job.
 | Contract                                        | Behaviour behind it       |
 | ----------------------------------------------- | ------------------------- |
 | `Job`, `JobStatus`, `JobEvent`, `JobErrorCode`  | `src/lib/jobs/`           |
-| `Asset`, `PublicAsset`, `JobWithAssets`         | `src/lib/assets/`         |
+| `ApiJob`, `ApiJobWithAssets`, `toApiJob`        | the wire, exactly         |
+| `Asset`, `PublicAsset`                          | `src/lib/assets/`         |
 | `ModelDescriptor`, `ModelTier`, `ModelSupports` | `src/lib/models/registry` |
 | `ApiResult<T>`, `ApiError`, `ok()`, `err()`     | every route handler       |
-| `parseOrThrow`, `issuesToFields`                | every trust boundary      |
 
-Two details that are load-bearing rather than stylistic:
+Three details that are load-bearing rather than stylistic:
 
+- **`ApiJob` is what the client receives, and `toApiJob` is the only path to
+  it.** It omits the server's bookkeeping (`sessionId`, `falRequestId`,
+  `idempotencyKey`, `attempt`, `nextPollAt`) and types timestamps as the ISO
+  strings JSON actually delivers — `Job`'s `Date` fields are the repository's
+  truth, not the wire's. The client layer (`src/lib/client/api.ts`) parses
+  every response against it, so a shape drift is an error at the boundary.
 - `PublicAsset` deliberately omits `storageKey`, `sourceUrl` and `sessionId`.
   Bytes are served through `/api/assets/[id]`, behind the gate, so the storage
   layout is never public information.
-- `ApiErrorCode` is a closed union that reuses `JobErrorCode`. A failure means
-  the same thing whether it surfaces on submit or arrives later on the job
-  record, and "never a dead end" is enforceable only because the list has no
-  generic `UNKNOWN` member. Resist adding one.
+- `ApiErrorCode` is a closed union that reuses `JobErrorCode`, and the
+  `RECOVERY` map in `src/lib/jobs/recovery.ts` is typed against it — a new
+  error code refuses to compile until it has recovery copy. "Never a dead
+  end" is enforceable only because the list has no generic `UNKNOWN` member.
+  Resist adding one.
 
 ---
 
@@ -196,6 +221,12 @@ Two details that are load-bearing rather than stylistic:
 Indexes that matter: `jobs (session_id, created_at desc)`,
 `jobs (status, next_poll_at)` — the reconciler's claim query depends on it —
 and a unique `jobs (session_id, idempotency_key)`.
+
+Schema changes go through committed migrations in `drizzle/`
+(`pnpm db:generate`, then `pnpm db:migrate` — which the Docker image runs on
+every boot). `db:push` remains only for the throwaway dev database; nothing
+that holds real generations is ever touched by a tool willing to drop columns
+on its own initiative.
 
 ---
 
@@ -231,6 +262,15 @@ substitutes a fake.
 | `LookResolver` | `src/lib/models/registry.ts`          |
 | `IngestPort`   | `src/lib/assets/ingest.ts`            |
 | `KeyResolver`  | `src/lib/keys/server-key-resolver.ts` |
+
+`LookResolver` does two deliberate steps: `normalizeParams` filters to what
+the model supports and is what gets **stored** on the job, still in the
+normalized vocabulary; `toProviderParams` builds the exact body the endpoint
+wants, via a per-look adapter map beside the catalogue. The fal adapter is
+transport-only — it owns no field names — which is what makes adding or
+swapping a model one registry entry (plus an adapter when the endpoint is
+quirky, plus a sample image). A unit test keeps `scripts/smoke-live.mjs`'s
+endpoint list from drifting out of step.
 
 `StoragePort` follows the same pattern one layer down, with a local-disk
 implementation writing to `.storage/`.

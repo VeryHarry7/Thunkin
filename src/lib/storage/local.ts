@@ -14,7 +14,12 @@ import type { StoragePort } from "./types";
  * Back them up together or you have backed up neither.
  */
 
-const ROOT = resolve(process.cwd(), ".storage");
+/**
+ * `STORAGE_ROOT` exists for tests, which point it at a temp directory so they
+ * never touch the real store. It is read once at module load like everything
+ * else about this adapter; production leaves it unset.
+ */
+const ROOT = resolve(process.env.STORAGE_ROOT ?? resolve(process.cwd(), ".storage"));
 
 /**
  * Keys come from our own code, but treating them as untrusted costs nothing
@@ -45,8 +50,11 @@ export const localStorage: StoragePort = {
   },
 
   async get(key) {
+    // Resolved before the try: the traversal guard's refusal must surface as
+    // the error it is, not dissolve into "no such key".
+    const path = pathFor(key);
     try {
-      const body = await readFile(pathFor(key));
+      const body = await readFile(path);
       let mime = "application/octet-stream";
       try {
         mime = await readFile(metaPathFor(key), "utf8");
