@@ -6,6 +6,7 @@ import {
   transition,
   type JobEventInput,
 } from "./machine";
+import { PATCH_FIELDS } from "./repo";
 
 const NOW = new Date("2026-08-25T12:00:00Z");
 
@@ -104,6 +105,14 @@ describe("illegal transitions", () => {
       expect(illegal.from).toBe("draft");
       expect(illegal.event).toBe("INGEST_COMPLETED");
     }
+  });
+
+  it("expires a job stranded in draft", () => {
+    // The crash window between creating the row and SUBMIT_STARTED. Such a job
+    // has no request id, so only the orphan pass can ever terminate it — and
+    // only if the machine lets EXPIRED apply from draft.
+    const result = transition(job("draft"), { type: "EXPIRED" }, NOW);
+    expect(result?.toStatus).toBe("expired");
   });
 
   it("covers the full matrix without an unhandled outcome", () => {
@@ -230,5 +239,31 @@ describe("eventForProviderStatus", () => {
       message: "refused",
     });
     expect(event).toMatchObject({ type: "FAILED", code: "CONTENT_REJECTED" });
+  });
+});
+
+describe("patch fields", () => {
+  it("never patches a column applyTransition would silently drop", () => {
+    // repo.applyTransition copies patch fields by an explicit list. A new
+    // field added to a transition but not to that list would be dropped with
+    // no compile error — this is the alarm that makes the drift loud.
+    const allowed = new Set<string>(["status", ...PATCH_FIELDS]);
+
+    for (const status of JobStatus.options) {
+      for (const event of ALL_EVENTS) {
+        let result;
+        try {
+          result = transition(job(status), event, NOW);
+        } catch {
+          continue;
+        }
+        if (result === null) continue;
+        for (const key of Object.keys(result.patch)) {
+          expect(allowed.has(key), `${event.type} patches unpersisted ${key}`).toBe(
+            true,
+          );
+        }
+      }
+    }
   });
 });

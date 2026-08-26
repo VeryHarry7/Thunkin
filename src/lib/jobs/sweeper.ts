@@ -1,4 +1,5 @@
-import { claimDueJobs } from "./repo";
+import { applyTransition, claimDueJobs, findOrphanedJobs } from "./repo";
+import { hasExpired } from "./backoff";
 import { advanceJob } from "./service";
 import { isTerminal } from "@/lib/contracts";
 
@@ -15,6 +16,8 @@ export interface SweepResult {
   claimed: number;
   advanced: number;
   settled: number;
+  /** Orphans (no provider request id) expired past their ceiling. */
+  expired: number;
   errors: number;
 }
 
@@ -31,6 +34,7 @@ export async function sweep(
     claimed: jobs.length,
     advanced: 0,
     settled: 0,
+    expired: 0,
     errors: 0,
   };
 
@@ -51,6 +55,27 @@ export async function sweep(
       // failing job could fail in silence forever.
       console.error(
         `[sweep] job ${job.id} failed:`,
+        error instanceof Error ? error.message : String(error),
+      );
+      result.errors++;
+    }
+  }
+
+  /*
+   * Second pass: orphans. A crash between creating a job and the provider
+   * accepting it leaves a row with no request id — invisible to the claim
+   * query above, unpollable, and (before this pass existed) immortal. Expire
+   * the ones past their ceiling; "zero orphaned jobs" is a property of this
+   * loop, not of hope.
+   */
+  for (const job of await findOrphanedJobs(options.limit ?? DEFAULT_BATCH)) {
+    if (!hasExpired(job, now)) continue;
+    try {
+      await applyTransition(job.id, { type: "EXPIRED" }, "sweeper");
+      result.expired++;
+    } catch (error) {
+      console.error(
+        `[sweep] orphan ${job.id} failed to expire:`,
         error instanceof Error ? error.message : String(error),
       );
       result.errors++;

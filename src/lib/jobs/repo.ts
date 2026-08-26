@@ -10,6 +10,7 @@ import {
   lte,
   notInArray,
   or,
+  sql,
 } from "drizzle-orm";
 import { db, type Db } from "@/lib/db";
 import { jobEvents, jobs, type JobRow } from "@/lib/db/tables/jobs";
@@ -189,6 +190,25 @@ export interface TransitionOutcome {
  * event row are written in one transaction so the audit trail can never lag
  * the state it describes.
  */
+/**
+ * Every job column a transition may write, besides `status`.
+ *
+ * Exported so the machine's tests can assert that no event produces a patch
+ * key outside this list — the previous hand-enumerated `if`s would silently
+ * drop a newly added field, which is exactly the failure a `Partial` cannot
+ * surface at compile time.
+ */
+export const PATCH_FIELDS = [
+  "submittedAt",
+  "startedAt",
+  "completedAt",
+  "falRequestId",
+  "queuePosition",
+  "errorCode",
+  "errorMessage",
+  "nextPollAt",
+] as const satisfies readonly (keyof Job)[];
+
 export async function applyTransition(
   jobId: string,
   event: JobEventInput,
@@ -221,15 +241,12 @@ export async function applyTransition(
 
     const patch: Partial<typeof jobs.$inferInsert> = { status: result.toStatus };
 
-    if ("submittedAt" in result.patch) patch.submittedAt = result.patch.submittedAt;
-    if ("startedAt" in result.patch) patch.startedAt = result.patch.startedAt;
-    if ("completedAt" in result.patch) patch.completedAt = result.patch.completedAt;
-    if ("falRequestId" in result.patch) patch.falRequestId = result.patch.falRequestId;
-    if ("queuePosition" in result.patch)
-      patch.queuePosition = result.patch.queuePosition;
-    if ("errorCode" in result.patch) patch.errorCode = result.patch.errorCode;
-    if ("errorMessage" in result.patch) patch.errorMessage = result.patch.errorMessage;
-    if ("nextPollAt" in result.patch) patch.nextPollAt = result.patch.nextPollAt;
+    for (const field of PATCH_FIELDS) {
+      if (field in result.patch) {
+        // The two sides agree column-for-column; the loop just cannot say so.
+        (patch as Record<string, unknown>)[field] = result.patch[field];
+      }
+    }
 
     const updated = await tx
       .update(jobs)
@@ -288,7 +305,9 @@ export async function claimDueJobs(
           or(isNull(jobs.nextPollAt), lte(jobs.nextPollAt, now)),
         ),
       )
-      .orderBy(asc(jobs.nextPollAt))
+      // Postgres sorts NULLs last under plain ASC, which would serve the
+      // never-scheduled — i.e. maximally overdue — jobs after everything else.
+      .orderBy(sql`${jobs.nextPollAt} asc nulls first`)
       .limit(limit)
       .for("update", { skipLocked: true });
 
@@ -314,12 +333,21 @@ export async function claimDueJobs(
   });
 }
 
-/** Non-terminal jobs, oldest first. Used by the sweeper's expiry pass. */
-export async function findStaleJobs(limit: number, client: Db = db): Promise<Job[]> {
+/**
+ * Non-terminal jobs with no provider request id, oldest first.
+ *
+ * These are the orphans: a crash between creating the row and the provider
+ * accepting it leaves a job the claim query can never see (it filters on
+ * `falRequestId` being present), so without this second path such a job would
+ * sit "in flight" forever. The sweeper expires the ones past their ceiling.
+ */
+export async function findOrphanedJobs(limit: number, client: Db = db): Promise<Job[]> {
   const rows = await client
     .select()
     .from(jobs)
-    .where(notInArray(jobs.status, [...TERMINAL_STATUSES]))
+    .where(
+      and(notInArray(jobs.status, [...TERMINAL_STATUSES]), isNull(jobs.falRequestId)),
+    )
     .orderBy(asc(jobs.createdAt))
     .limit(limit);
 

@@ -3,7 +3,11 @@ import { env } from "@/lib/env";
 import { getProvider, ProviderError, type ProviderOutput } from "@/lib/provider";
 import { getIngestPort, getKeyResolver, getLookResolver } from "@/lib/ports";
 import type { GenerationParams, Job, JobErrorCode } from "@/lib/contracts";
-import { eventForProviderStatus, type TransitionSource } from "./machine";
+import {
+  IllegalTransition,
+  eventForProviderStatus,
+  type TransitionSource,
+} from "./machine";
 import {
   applyTransition,
   createJob,
@@ -246,8 +250,21 @@ export async function cancelJob(jobId: string, sessionId: string): Promise<Job> 
     }
   }
 
-  const outcome = await applyTransition(job.id, { type: "CANCELED" }, "client");
-  return outcome.job;
+  try {
+    const outcome = await applyTransition(job.id, { type: "CANCELED" }, "client");
+    return outcome.job;
+  } catch (error) {
+    // Cancelling during `ingesting` is deliberately illegal in the machine —
+    // the money is spent and the result is seconds away — but from the
+    // visitor's side "stop" arriving a moment late is not an error. Absorb it
+    // and hand back the job as it stands; a terminal state a moment later is
+    // the honest outcome.
+    if (error instanceof IllegalTransition) {
+      const current = await getJob(job.id, sessionId);
+      return current ?? job;
+    }
+    throw error;
+  }
 }
 
 /** Normalizes any thrown value into a taxonomy code and safe message. */

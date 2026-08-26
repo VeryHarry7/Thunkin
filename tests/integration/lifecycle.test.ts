@@ -11,6 +11,7 @@ import {
 import {
   closeDb,
   databaseAvailable,
+  getDb,
   pushSchema,
   startFixtureServer,
   stopFixtureServer,
@@ -18,10 +19,20 @@ import {
 } from "./harness";
 import { resetMockProvider } from "@/lib/provider";
 import { resetPorts, setPortsForTesting } from "@/lib/ports";
-import { handleWebhook, submitJob } from "@/lib/jobs/service";
+import { cancelJob, handleWebhook, submitJob } from "@/lib/jobs/service";
 import { sweep } from "@/lib/jobs/sweeper";
-import { claimDueJobs, getJob, listJobEvents, listJobs } from "@/lib/jobs/repo";
+import {
+  applyTransition,
+  claimDueJobs,
+  createJob,
+  getJob,
+  listJobEvents,
+  listJobs,
+} from "@/lib/jobs/repo";
 import { assetsForJobs, getAsset } from "@/lib/assets/repo";
+import { deleteJob } from "@/lib/assets/delete";
+import { eq } from "drizzle-orm";
+import { jobs } from "@/lib/db/tables/jobs";
 import { getStorage } from "@/lib/storage";
 
 /**
@@ -454,5 +465,118 @@ describeDb("session scoping", () => {
     });
 
     expect(theirs.id).not.toBe(mine.id);
+  });
+});
+
+describeDb("orphans, cancellation, deletion", () => {
+  beforeAll(async () => {
+    pushSchema();
+    await startFixtureServer();
+  });
+
+  afterAll(async () => {
+    await stopFixtureServer();
+    await closeDb();
+  });
+
+  beforeEach(async () => {
+    await truncateAll();
+    resetMockProvider();
+    setPortsForTesting({
+      keyResolver: { getKeyForSession: async () => KEY },
+    });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    at(0);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    resetPorts();
+  });
+
+  it("expires orphans the claim query can never see", async () => {
+    // The crash windows: before SUBMIT_STARTED leaves `draft`, after it but
+    // before the provider answers leaves `submitting` — both with no request
+    // id, so the poll path is blind to them. Only this pass ends them.
+    const draft = await createJob({
+      sessionId: SESSION,
+      kind: "image",
+      lookId: "quick-sketch",
+      modelId: "fal-ai/flux/schnell",
+      params: { prompt: "stranded before submit" },
+      idempotencyKey: "orphan-draft",
+    });
+    // `createdAt` is a database default and the database's clock is real; pin
+    // it to the faked timeline so "created at T0" is actually true.
+    await getDb()
+      .update(jobs)
+      .set({ createdAt: new Date() })
+      .where(eq(jobs.id, draft.job.id));
+
+    const submitting = await createJob({
+      sessionId: SESSION,
+      kind: "image",
+      lookId: "quick-sketch",
+      modelId: "fal-ai/flux/schnell",
+      params: { prompt: "stranded mid-submit" },
+      idempotencyKey: "orphan-submitting",
+    });
+    await applyTransition(submitting.job.id, { type: "SUBMIT_STARTED" }, "client");
+
+    // Young orphans are left alone — a submit in progress looks identical.
+    at(1_000);
+    const early = await sweep();
+    expect(early.expired).toBe(0);
+
+    // Past the image ceiling, both are expired.
+    at(700_000);
+    const late = await sweep();
+    expect(late.expired).toBe(2);
+
+    expect((await getJob(draft.job.id, SESSION))?.status).toBe("expired");
+    expect((await getJob(submitting.job.id, SESSION))?.status).toBe("expired");
+  });
+
+  it("absorbs a cancel that lands during ingest", async () => {
+    // CANCELED from `ingesting` is deliberately illegal in the machine — the
+    // money is spent, the result is seconds away. The service must absorb
+    // that as "too late" rather than escaping as a 500.
+    const job = await submitJob({
+      sessionId: SESSION,
+      lookId: "quick-sketch",
+      params: { prompt: "a lighthouse at dusk" },
+    });
+
+    await applyTransition(job.id, { type: "PROVIDER_RUNNING" }, "system");
+    await applyTransition(job.id, { type: "PROVIDER_COMPLETED" }, "system");
+
+    const outcome = await cancelJob(job.id, SESSION);
+    expect(outcome.status).toBe("ingesting");
+    expect((await getJob(job.id, SESSION))?.status).toBe("ingesting");
+  });
+
+  it("deleteJob removes the bytes and every row, in that order of importance", async () => {
+    const job = await submitJob({
+      sessionId: SESSION,
+      lookId: "quick-sketch",
+      params: { prompt: "a lighthouse at dusk" },
+    });
+    at(3_000);
+    await sweep();
+    expect((await getJob(job.id, SESSION))?.status).toBe("ready");
+
+    const publics = (await assetsForJobs([job.id])).get(job.id) ?? [];
+    expect(publics.length).toBeGreaterThan(0);
+    const asset = await getAsset(publics[0]!.id, SESSION);
+    expect(asset).not.toBeNull();
+    expect(await getStorage().get(asset!.storageKey)).not.toBeNull();
+
+    expect(await deleteJob(job.id)).toBe(true);
+
+    // Bytes gone, rows gone, audit trail cascaded.
+    expect(await getStorage().get(asset!.storageKey)).toBeNull();
+    expect(await getJob(job.id, SESSION)).toBeNull();
+    expect(await getAsset(publics[0]!.id, SESSION)).toBeNull();
+    expect(await listJobEvents(job.id)).toHaveLength(0);
   });
 });

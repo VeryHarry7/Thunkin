@@ -51,8 +51,18 @@ export async function GET(
     return NextResponse.json({ ok: false, reason: "missing-bytes" }, { status: 502 });
   }
 
-  // Uint8Array is not a BodyInit under the DOM lib's typing; its buffer is.
-  return new Response(stored.body.buffer as ArrayBuffer, {
+  // Uint8Array is not a BodyInit under the DOM lib's typing; an ArrayBuffer
+  // is. But `.buffer` alone would be the *backing* store — for a subarray
+  // (a pooled Buffer, a future adapter returning a view) that serves the whole
+  // slab under a Content-Length describing the view: truncation at best, some
+  // other asset's bytes at worst. Slice exactly when the view isn't the whole
+  // buffer; today's local storage copies on read, so this is the cheap branch.
+  const exact =
+    stored.body.byteOffset === 0 &&
+    stored.body.byteLength === stored.body.buffer.byteLength
+      ? stored.body
+      : stored.body.slice();
+  return new Response(exact.buffer as ArrayBuffer, {
     headers: {
       "Content-Type": stored.mime,
       "Content-Length": String(stored.body.byteLength),

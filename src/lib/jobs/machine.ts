@@ -68,7 +68,10 @@ const ALLOWED_FROM: Record<JobEventType, readonly JobStatus[]> = {
   INGEST_COMPLETED: ["ingesting"],
   FAILED: ["draft", "submitting", "queued", "running", "ingesting"],
   CANCELED: ["draft", "submitting", "queued", "running"],
-  EXPIRED: ["submitting", "queued", "running", "ingesting"],
+  // `draft` is here for the crash window between creating the row and
+  // SUBMIT_STARTED: a job stranded there has no provider request to poll and
+  // no other way to ever reach a terminal state.
+  EXPIRED: ["draft", "submitting", "queued", "running", "ingesting"],
 };
 
 /** Thrown when an event cannot legally apply to a job's current status. */
