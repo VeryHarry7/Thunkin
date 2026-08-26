@@ -181,53 +181,10 @@
   position: relative;
 }
 
-/* Overlay on a pending tile: honest elapsed time, and a way out. */
-.pending {
-  position: absolute;
-  inset: auto 0 0 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-2);
-  padding: var(--s-3);
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
-  font-size: var(--t-xs);
-}
-
-.pendingState {
-  color: var(--ink-dim);
-  letter-spacing: 0.04em;
-}
-
-.elapsed {
-  color: var(--ink);
-}
-
+/* Tile internals (pending overlay, caption, actions) live in
+   src/components/jobtile.module.css with the shared JobTile. */
 .failed {
   grid-column: 1 / -1;
-}
-
-.caption {
-  position: absolute;
-  inset: auto 0 0 0;
-  padding: var(--s-4) var(--s-3) var(--s-3);
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.75), transparent);
-  font-size: var(--t-xs);
-  color: var(--ink-dim);
-  opacity: 0;
-  transition: opacity var(--d-2) var(--ease);
-}
-
-.card:hover .caption,
-.card:focus-within .caption {
-  opacity: 1;
-}
-
-/* On touch there is no hover, so the caption is simply always visible. */
-@media (hover: none) {
-  .caption {
-    opacity: 1;
-  }
 }
 
 /* ---- Composer ---------------------------------------------------------- */

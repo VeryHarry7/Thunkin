@@ -1,48 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import type { ApiJobWithAssets, ApiResult } from "@/lib/contracts";
 import { isTerminal } from "@/lib/contracts";
-import { ratioToNumber } from "@/lib/models/registry";
-import { MediaTile } from "@/components/ui";
+import { deleteJob } from "@/lib/client/api";
+import { useJobs } from "@/lib/client/useJobs";
+import { JobTile } from "@/components/JobTile";
 import s from "./library.module.css";
 
 /**
  * Everything ever made, newest first.
  *
  * Not scoped to this browser: the server treats an unlocked caller as the
- * owner, so a generation started on a phone shows up on a laptop and the other
- * way round.
+ * owner, so a generation started on a phone shows up on a laptop and the
+ * other way round.
  */
 export function Library() {
-  const [jobs, setJobs] = useState<ApiJobWithAssets[]>([]);
-  const [loaded, setLoaded] = useState(false);
-
-  const refresh = useCallback(async () => {
-    try {
-      const response = await fetch("/api/jobs?limit=100");
-      const body = (await response.json()) as ApiResult<ApiJobWithAssets[]>;
-      if (body.ok) setJobs(body.data);
-    } catch {
-      // A dropped poll is not worth surfacing; the next one lands.
-    } finally {
-      setLoaded(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  // Anything still running keeps the page live; an idle library sits quiet.
-  const pending = jobs.filter((job) => !isTerminal(job.status)).length;
-
-  useEffect(() => {
-    if (pending === 0) return;
-    const timer = setInterval(() => void refresh(), 1500);
-    return () => clearInterval(timer);
-  }, [pending, refresh]);
+  const { jobs, loaded, pendingCount, refresh, removeJob } = useJobs({ limit: 100 });
 
   async function remove(jobId: string, prompt: string) {
     // Deleting removes the bytes, not just the row, and there is no second
@@ -52,8 +25,8 @@ export function Library() {
 
     // Optimistic past that point: the tile goes immediately, and a failure
     // simply restores it on the next refresh rather than blocking on a spinner.
-    setJobs((current) => current.filter((job) => job.id !== jobId));
-    await fetch(`/api/jobs/${jobId}`, { method: "DELETE" }).catch(() => {});
+    removeJob(jobId);
+    await deleteJob(jobId).catch(() => {});
     void refresh();
   }
 
@@ -72,7 +45,9 @@ export function Library() {
           <span className={`${s.link} ${s.linkOn}`}>Library</span>
         </nav>
         <span className={s.count}>
-          {pending > 0 ? `${pending} in flight` : `${withAssets.length} saved`}
+          {pendingCount > 0
+            ? `${pendingCount} in flight`
+            : `${withAssets.length} saved`}
         </span>
       </header>
 
@@ -86,62 +61,14 @@ export function Library() {
           </div>
         )}
 
-        {withAssets.map((job) => {
-          const asset = job.assets[0];
-          const ratio = ratioToNumber(job.params.aspectRatio ?? "1:1");
-          const settled = isTerminal(job.status);
-
-          return (
-            <div className={s.card} key={job.id}>
-              <MediaTile
-                pending={!settled || !asset}
-                src={asset?.url ?? null}
-                blur={asset?.blurPlaceholder ?? null}
-                kind={job.kind}
-                ratio={ratio}
-                alt={job.params.prompt}
-                overlay={
-                  asset ? (
-                    <div className={s.actions}>
-                      <a
-                        className={s.action}
-                        href={`${asset.url}?download=1`}
-                        title="Download"
-                        aria-label={`Download: ${job.params.prompt}`}
-                      >
-                        ↓
-                      </a>
-                      <a
-                        className={s.action}
-                        href={asset.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        title="Open full size"
-                        aria-label={`Open full size: ${job.params.prompt}`}
-                      >
-                        ⤢
-                      </a>
-                      <span className={s.spacer} />
-                      <button
-                        type="button"
-                        className={`${s.action} ${s.danger}`}
-                        title="Delete"
-                        aria-label={`Delete: ${job.params.prompt}`}
-                        onClick={() => void remove(job.id, job.params.prompt)}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ) : (
-                    <div className={s.pending}>
-                      {job.status === "queued" ? "Queued" : "Generating"}
-                    </div>
-                  )
-                }
-              />
-            </div>
-          );
-        })}
+        {withAssets.map((job) => (
+          <JobTile
+            key={job.id}
+            job={job}
+            className={s.card}
+            onDelete={(target) => void remove(target.id, target.params.prompt)}
+          />
+        ))}
       </main>
     </div>
   );

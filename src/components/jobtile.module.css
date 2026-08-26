@@ -1,0 +1,95 @@
+/* The per-job card, shared by the studio grid and the library. */
+
+.card {
+  position: relative;
+  min-width: 0;
+}
+
+/* Overlay on a pending tile: honest elapsed time. */
+.pending {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+  font-size: var(--t-xs);
+}
+
+.pendingState {
+  color: var(--ink-dim);
+  letter-spacing: 0.04em;
+}
+
+.elapsed {
+  color: var(--ink);
+}
+
+/* The prompt, revealed on hover — always visible on touch, where there is no
+   hover to reveal it with. */
+.caption {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: var(--s-4) var(--s-3) var(--s-3);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.75), transparent);
+  font-size: var(--t-xs);
+  color: var(--ink-dim);
+  opacity: 0;
+  transition: opacity var(--d-2) var(--ease);
+}
+
+/* Action row over a ready tile, same reveal rules as the caption. */
+.actions {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-4) var(--s-2) var(--s-2);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
+  opacity: 0;
+  transition: opacity var(--d-2) var(--ease);
+}
+
+.card:hover .caption,
+.card:focus-within .caption,
+.card:hover .actions,
+.card:focus-within .actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .caption,
+  .actions {
+    opacity: 1;
+  }
+}
+
+.action {
+  display: grid;
+  place-items: center;
+  /* 44px of touch target, drawn smaller. Thumbs are not cursors. */
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  cursor: pointer;
+  border-radius: var(--r-1);
+}
+
+.action:hover {
+  color: var(--ink);
+}
+
+.danger:hover {
+  color: var(--danger);
+}
+
+.spacer {
+  flex: 1;
+}

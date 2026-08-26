@@ -157,3 +157,29 @@ test.describe("sweep endpoint", () => {
     expect((await response.json()).ok).toBe(true);
   });
 });
+
+test.describe("deletion", () => {
+  test("deleting a job removes it and its bytes for good", async ({ request }) => {
+    const create = await request.post("/api/jobs", {
+      data: {
+        lookId: "quick-sketch",
+        params: { prompt: "to be deleted" },
+        idempotencyKey: `delete-${Date.now()}`,
+      },
+    });
+    const created = await create.json();
+    expect(created.ok).toBe(true);
+
+    const job = await waitForTerminal(request, created.data.id);
+    expect(job.status).toBe("ready");
+    const assetUrl = job.assets[0].url as string;
+    expect((await request.get(assetUrl)).status()).toBe(200);
+
+    const del = await request.delete(`/api/jobs/${job.id}`);
+    expect(del.status()).toBe(200);
+
+    // Gone means gone: the job 404s and so do the bytes it produced.
+    expect((await request.get(`/api/jobs/${job.id}`)).status()).toBe(404);
+    expect((await request.get(assetUrl)).status()).toBe(404);
+  });
+});
