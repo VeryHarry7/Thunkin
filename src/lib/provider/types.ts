@@ -1,4 +1,4 @@
-import type { GenerationParams, JobErrorCode, JobKind } from "@/lib/contracts";
+import type { JobErrorCode, JobKind } from "@/lib/contracts";
 
 /**
  * The provider boundary.
@@ -13,7 +13,12 @@ export interface SubmitInput {
   /** The fal endpoint to invoke, from the registry. */
   endpoint: string;
   kind: JobKind;
-  params: GenerationParams;
+  /**
+   * The exact request body for this endpoint, already adapted by the look's
+   * payload adapter. The provider transports it verbatim — it owns no field
+   * names of its own.
+   */
+  params: Record<string, unknown>;
   /** The visitor's own key, decrypted at the last possible moment. */
   apiKey: string;
   /**

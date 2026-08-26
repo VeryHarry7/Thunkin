@@ -125,7 +125,7 @@ export function createFalProvider(fetchImpl: FetchLike = fetch): Provider {
 
       const body = await call(url, input.apiKey, {
         method: "POST",
-        body: JSON.stringify(toFalPayload(input)),
+        body: JSON.stringify(input.params),
       });
 
       const requestId = (body as { request_id?: unknown })?.request_id;
@@ -187,22 +187,6 @@ export function createFalProvider(fetchImpl: FetchLike = fetch): Provider {
       }
     },
   };
-}
-
-/** Normalized params to fal's field names. */
-function toFalPayload(input: SubmitInput): Record<string, unknown> {
-  const { params } = input;
-  const payload: Record<string, unknown> = { prompt: params.prompt };
-
-  if (params.negativePrompt !== undefined) {
-    payload.negative_prompt = params.negativePrompt;
-  }
-  if (params.aspectRatio !== undefined) payload.aspect_ratio = params.aspectRatio;
-  if (params.seed !== undefined) payload.seed = params.seed;
-  if (params.durationSeconds !== undefined) payload.duration = params.durationSeconds;
-  if (params.inputAssetId !== undefined) payload.image_url = params.inputAssetId;
-
-  return payload;
 }
 
 /**

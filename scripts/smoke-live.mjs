@@ -32,7 +32,11 @@ if (!KEY) {
 const QUEUE = "https://queue.fal.run";
 const wantVideo = process.argv.includes("--video");
 
-/** Mirrors src/lib/models/registry.ts. Keep them in step. */
+/**
+ * Mirrors src/lib/models/registry.ts — this script runs under plain Node with
+ * no `@/` alias, so it carries a copy. A unit test (registry.test.ts, "the
+ * live smoke script") fails the build if the two lists ever disagree.
+ */
 const LOOKS = [
   { look: "Quick Sketch", endpoint: "fal-ai/flux/schnell", kind: "image" },
   { look: "Photoreal", endpoint: "fal-ai/nano-banana-pro", kind: "image" },

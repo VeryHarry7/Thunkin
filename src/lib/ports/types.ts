@@ -16,19 +16,35 @@ import type { ProviderOutput } from "@/lib/provider";
 /**
  * Turns the look a visitor picked into a concrete model and a provider payload.
  *
+ * Two steps, deliberately separate, because their outputs go to different
+ * places: normalized params are **persisted** on the job and read back by the
+ * UI, while the provider payload is **sent** and belongs to one model's API.
+ * Collapsing them was the old design's mistake — it forced one shared field
+ * mapping onto every endpoint, which is exactly what made "adding a model is
+ * a one-file change" untrue.
  */
 export interface LookResolver {
   /** Null when the look id is unknown — callers must treat that as a 400. */
   resolveLook(lookId: string): ModelDescriptor | null;
 
   /**
-   * Adapts normalized params into whatever this specific model wants. Keeping
-   * this behind the port is what lets the UI stay model-agnostic.
+   * Drops what this model cannot honour and clamps what it can. The result is
+   * still `GenerationParams` — it is what gets stored on the job.
+   */
+  normalizeParams(
+    descriptor: ModelDescriptor,
+    params: GenerationParams,
+  ): GenerationParams;
+
+  /**
+   * Normalized params into the exact body this model's endpoint wants. The
+   * provider transports this verbatim; every model-specific field name lives
+   * behind this call.
    */
   toProviderParams(
     descriptor: ModelDescriptor,
     params: GenerationParams,
-  ): GenerationParams;
+  ): Record<string, unknown>;
 }
 
 /**

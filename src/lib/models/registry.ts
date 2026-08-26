@@ -16,9 +16,10 @@ import type { LookResolver } from "@/lib/ports";
  *
  * Deliberately excluded: Sora 2, whose API shuts down 2026-09-24.
  *
- * Four looks spanning both kinds and the speed/quality range, enough to
- * prove the picker and the
- * param-adaptation path. Adding a model is a single entry here.
+ * Adding or swapping a model is one entry in LOOKS plus, when the endpoint's
+ * field names differ from the common fal shape, one adapter beside it — and a
+ * sample image under public/looks/. Nothing outside this file changes: the
+ * provider is transport-only and sends whatever the adapter builds.
  */
 
 const LOOKS: ModelDescriptor[] = [
@@ -138,6 +139,74 @@ const LOOKS: ModelDescriptor[] = [
 
 const BY_ID = new Map(LOOKS.map((look) => [look.lookId, look]));
 
+/* ========================================================================
+ * Payload adapters
+ *
+ * One function per look that needs anything beyond the common shape, plus a
+ * default. This is the whole reason adding or swapping a model is one entry
+ * in this file: the provider is transport-only and every field-name quirk
+ * lives here, next to the model it belongs to.
+ *
+ * Like the endpoint ids above: field names verified against fal's docs,
+ * unverified against the live API until the smoke runs.
+ * ===================================================================== */
+
+type PayloadAdapter = (params: GenerationParams) => Record<string, unknown>;
+
+/** The common fal shape. Note: no image field — reference inputs are a
+ * per-model concern for the adapter that supports them (see docs/BACKLOG.md). */
+const defaultAdapt: PayloadAdapter = (params) => {
+  const payload: Record<string, unknown> = { prompt: params.prompt };
+  if (params.negativePrompt !== undefined)
+    payload.negative_prompt = params.negativePrompt;
+  if (params.aspectRatio !== undefined) payload.aspect_ratio = params.aspectRatio;
+  if (params.seed !== undefined) payload.seed = params.seed;
+  if (params.durationSeconds !== undefined) payload.duration = params.durationSeconds;
+  return payload;
+};
+
+/** FLUX takes `image_size` — a named preset, not a ratio string. */
+const FLUX_SIZES: Record<string, string> = {
+  "1:1": "square_hd",
+  "16:9": "landscape_16_9",
+  "9:16": "portrait_16_9",
+  "4:3": "landscape_4_3",
+  "3:4": "portrait_4_3",
+};
+
+const fluxAdapt: PayloadAdapter = (params) => {
+  const payload = defaultAdapt(params);
+  delete payload.aspect_ratio;
+  if (params.aspectRatio && FLUX_SIZES[params.aspectRatio]) {
+    payload.image_size = FLUX_SIZES[params.aspectRatio];
+  }
+  return payload;
+};
+
+/** Veo wants duration as a labelled string ("8s"), not a number. */
+const veoAdapt: PayloadAdapter = (params) => {
+  const payload = defaultAdapt(params);
+  if (params.durationSeconds !== undefined) {
+    payload.duration = `${Math.round(params.durationSeconds)}s`;
+  }
+  return payload;
+};
+
+/** Kling wants duration as a bare numeric string ("5", "10"). */
+const klingAdapt: PayloadAdapter = (params) => {
+  const payload = defaultAdapt(params);
+  if (params.durationSeconds !== undefined) {
+    payload.duration = String(Math.round(params.durationSeconds));
+  }
+  return payload;
+};
+
+const ADAPTERS: Partial<Record<string, PayloadAdapter>> = {
+  "quick-sketch": fluxAdapt,
+  "motion-sketch": veoAdapt,
+  cinematic: klingAdapt,
+};
+
 export const registry: LookResolver = {
   resolveLook(lookId: string): ModelDescriptor | null {
     return BY_ID.get(lookId) ?? null;
@@ -148,36 +217,44 @@ export const registry: LookResolver = {
    *
    * Filtering here rather than in the UI means an unsupported field can never
    * reach the provider and be rejected — the UI just doesn't render a control
-   * the model has no `supports` flag for.
+   * the model has no `supports` flag for. The result is what gets persisted
+   * on the job, so it stays in the normalized vocabulary.
    */
-  toProviderParams(
+  normalizeParams(
     descriptor: ModelDescriptor,
     params: GenerationParams,
   ): GenerationParams {
-    const adapted: GenerationParams = { prompt: params.prompt };
+    const normalized: GenerationParams = { prompt: params.prompt };
 
     if (descriptor.supports.negativePrompt && params.negativePrompt !== undefined) {
-      adapted.negativePrompt = params.negativePrompt;
+      normalized.negativePrompt = params.negativePrompt;
     }
     if (descriptor.supports.seed && params.seed !== undefined) {
-      adapted.seed = params.seed;
+      normalized.seed = params.seed;
     }
     if (descriptor.supports.duration && params.durationSeconds !== undefined) {
-      adapted.durationSeconds = params.durationSeconds;
+      normalized.durationSeconds = params.durationSeconds;
     }
     if (descriptor.supports.imageInput && params.inputAssetId !== undefined) {
-      adapted.inputAssetId = params.inputAssetId;
+      normalized.inputAssetId = params.inputAssetId;
     }
 
     // An unsupported ratio falls back to the model's default rather than
     // failing the submit — the visitor's intent was "this shape-ish", and the
     // picker only offers valid ratios anyway.
-    adapted.aspectRatio =
+    normalized.aspectRatio =
       params.aspectRatio && descriptor.aspectRatios.includes(params.aspectRatio)
         ? params.aspectRatio
         : descriptor.aspectRatios[0]!;
 
-    return adapted;
+    return normalized;
+  },
+
+  toProviderParams(
+    descriptor: ModelDescriptor,
+    params: GenerationParams,
+  ): Record<string, unknown> {
+    return (ADAPTERS[descriptor.lookId] ?? defaultAdapt)(params);
   },
 };
 

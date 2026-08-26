@@ -68,7 +68,10 @@ export async function submitJob(input: SubmitJobInput): Promise<Job> {
     );
   }
 
-  const params = getLookResolver().toProviderParams(descriptor, input.params);
+  // Normalized params are what gets stored (the UI reads them back); the
+  // provider payload is derived from them at the moment of submission and
+  // belongs entirely to the model's own API.
+  const params = getLookResolver().normalizeParams(descriptor, input.params);
 
   const { job, created } = await createJob({
     sessionId: input.sessionId,
@@ -89,7 +92,7 @@ export async function submitJob(input: SubmitJobInput): Promise<Job> {
     const { requestId } = await getProvider().submit({
       endpoint: descriptor.endpoint,
       kind: descriptor.kind,
-      params,
+      params: getLookResolver().toProviderParams(descriptor, params),
       apiKey,
       webhookUrl: webhookUrlFor(env.PUBLIC_URL),
     });

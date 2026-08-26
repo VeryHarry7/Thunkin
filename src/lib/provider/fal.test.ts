@@ -65,36 +65,20 @@ describe("submit", () => {
     expect(calls[0]!.url).not.toContain(KEY);
   });
 
-  it("translates normalized params into fal's field names", async () => {
+  it("transports the adapted payload verbatim", async () => {
+    // Field names belong to the registry's per-look adapters, not here. The
+    // provider must send exactly what it was handed — a transport that
+    // "helpfully" reshapes payloads is how two models fight over one mapping.
     const { impl, calls } = stubFetch(jsonResponse({ request_id: "req_1" }));
 
-    await createFalProvider(impl).submit({
-      ...SUBMIT,
-      params: {
-        prompt: "a lighthouse",
-        negativePrompt: "blurry",
-        aspectRatio: "16:9",
-        seed: 7,
-        durationSeconds: 5,
-      },
-    });
-
-    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
+    const payload = {
       prompt: "a lighthouse",
-      negative_prompt: "blurry",
-      aspect_ratio: "16:9",
-      seed: 7,
-      duration: 5,
-    });
-  });
+      image_size: "landscape_16_9",
+      anything_the_adapter_chose: true,
+    };
+    await createFalProvider(impl).submit({ ...SUBMIT, params: payload });
 
-  it("omits absent optional params rather than sending nulls", async () => {
-    const { impl, calls } = stubFetch(jsonResponse({ request_id: "req_1" }));
-    await createFalProvider(impl).submit(SUBMIT);
-
-    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
-      prompt: "a lighthouse at dusk",
-    });
+    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual(payload);
   });
 
   it("fails loudly when the service returns no request id", async () => {

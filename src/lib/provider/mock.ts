@@ -126,7 +126,10 @@ export const mockProvider: Provider = {
       throw new ProviderError("INVALID_KEY", "No API key was supplied.");
     }
 
-    const { failWith, slow, stall } = readDirectives(input.params.prompt);
+    // Adapted payloads always carry `prompt`, but the type no longer promises
+    // it — the mock narrows like the trust boundary it stands in for.
+    const prompt = typeof input.params.prompt === "string" ? input.params.prompt : "";
+    const { failWith, slow, stall } = readDirectives(prompt);
     const base = BASE_DURATION_MS[input.kind];
 
     const requestId = `mock_${Date.now().toString(36)}_${Math.random()
@@ -138,7 +141,10 @@ export const mockProvider: Provider = {
       kind: input.kind,
       createdAt: Date.now(),
       durationMs: slow ? base * 4 : base,
-      seed: input.params.seed ?? Math.floor(Math.random() * 2_147_483_647),
+      seed:
+        typeof input.params.seed === "number"
+          ? input.params.seed
+          : Math.floor(Math.random() * 2_147_483_647),
       stall,
       ...(failWith ? { failWith } : {}),
     });
