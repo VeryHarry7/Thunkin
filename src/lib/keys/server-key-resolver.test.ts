@@ -20,18 +20,26 @@ afterEach(() => {
 });
 
 describe("serverKeyResolver", () => {
-  it("returns the configured key", async () => {
-    const { serverKeyResolver } = await loadResolver({ FAL_KEY: "id:secret" });
+  it("returns the configured key in live mode", async () => {
+    const { serverKeyResolver } = await loadResolver({
+      FAL_MODE: "live",
+      FAL_KEY: "id:secret",
+    });
     await expect(serverKeyResolver.getKey()).resolves.toBe("id:secret");
   });
 
-  it("returns null rather than an empty string when no key is set", async () => {
-    // `!apiKey` in the service catches both, but a null says "unconfigured"
-    // where an empty string says "configured as nothing".
+  it("resolves a key in mock mode with no FAL_KEY — the documented quickstart", async () => {
+    // The regression this file exists for. `.env.example` ships `FAL_KEY=`
+    // empty and the README promises mock mode "costs nothing, needs no key" —
+    // but `submitJob` rejects a null key with NO_KEY before the mock provider
+    // is ever reached, so returning null here 401s every generation on the one
+    // path a new user is told to start with. Every test elsewhere supplies a
+    // key, which is exactly why nothing caught it.
     const { serverKeyResolver } = await loadResolver({
       FAL_MODE: "mock",
       FAL_KEY: "",
     });
-    await expect(serverKeyResolver.getKey()).resolves.toBeNull();
+    await expect(serverKeyResolver.getKey()).resolves.toEqual(expect.any(String));
   });
+
 });
