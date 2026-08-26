@@ -11,11 +11,10 @@ import { env } from "@/lib/env";
  * secrets, and there are no other people.
  *
  * The `KeyResolver` port stays in place because it costs nothing and is the
- * seam if this ever becomes multi-user again. `sessionId` is ignored: every
- * session resolves to the same key by design.
+ * seam if this ever becomes multi-user again.
  */
 export const serverKeyResolver: KeyResolver = {
-  async getKeyForSession(_sessionId: string): Promise<string | null> {
+  async getKey(): Promise<string | null> {
     // The env contract already refuses to boot with FAL_MODE=live and no key,
     // so a null here can only mean mock mode, where it is harmless.
     return env.FAL_KEY ?? null;

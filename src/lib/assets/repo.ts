@@ -31,7 +31,6 @@ export function toPublicAsset(row: AssetRow): PublicAsset {
  */
 export async function getAsset(
   assetId: string,
-  _sessionId: string,
   client: Db = db,
 ): Promise<AssetRow | null> {
   const rows = await client

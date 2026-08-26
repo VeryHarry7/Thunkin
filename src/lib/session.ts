@@ -1,6 +1,7 @@
-import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
+import { signValue, verifySignedValue } from "@/lib/auth/signing";
 
 /**
  * Device identity.
@@ -32,29 +33,25 @@ const MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
  */
 const USE_SECURE_COOKIE = env.PUBLIC_URL.startsWith("https://");
 
-function signatureFor(id: string): string {
-  return createHmac("sha256", env.SESSION_SECRET).update(id).digest("base64url");
-}
+/*
+ * Signing goes through the shared Web Crypto helpers in auth/signing.ts —
+ * the module whose own header warns that a second copy of signing logic
+ * drifts and then silently accepts a cookie it should reject. This used to
+ * be that second copy (node:crypto, byte-identical output); now there is one.
+ */
 
-export function signSessionId(id: string): string {
-  return `${id}.${signatureFor(id)}`;
+export async function signSessionId(id: string): Promise<string> {
+  return signValue(id, env.SESSION_SECRET);
 }
 
 /** Returns the id only when the signature checks out. */
-export function verifySessionCookie(value: string | undefined): string | null {
-  if (!value) return null;
-
-  const separator = value.lastIndexOf(".");
-  if (separator <= 0) return null;
-
-  const id = value.slice(0, separator);
-  const provided = Buffer.from(value.slice(separator + 1));
-  const expected = Buffer.from(signatureFor(id));
-
-  // Length check first: timingSafeEqual throws on a mismatch rather than
-  // returning false.
-  if (provided.length !== expected.length) return null;
-  return timingSafeEqual(provided, expected) ? id : null;
+export async function verifySessionCookie(
+  value: string | undefined,
+): Promise<string | null> {
+  const id = await verifySignedValue(value, env.SESSION_SECRET);
+  // The prefix check keeps a signed value from some other cookie family from
+  // ever being taken for a session id.
+  return id !== null && id.startsWith("sess_") ? id : null;
 }
 
 export function newSessionId(): string {
@@ -75,11 +72,11 @@ export async function getSessionId(): Promise<string | null> {
  */
 export async function requireSessionId(): Promise<string> {
   const store = await cookies();
-  const existing = verifySessionCookie(store.get(SESSION_COOKIE)?.value);
+  const existing = await verifySessionCookie(store.get(SESSION_COOKIE)?.value);
   if (existing) return existing;
 
   const id = newSessionId();
-  store.set(SESSION_COOKIE, signSessionId(id), {
+  store.set(SESSION_COOKIE, await signSessionId(id), {
     httpOnly: true,
     secure: USE_SECURE_COOKIE,
     sameSite: "lax",
@@ -88,16 +85,4 @@ export async function requireSessionId(): Promise<string> {
   });
 
   return id;
-}
-
-/**
- * The identity for an unlocked caller.
- *
- * Middleware has already proved they hold the passphrase, so a session cookie
- * is no longer an authorization signal — it only records which device made a
- * thing. A browser that has unlocked but never submitted has no cookie yet, and
- * demanding one would 404 the library on every fresh device.
- */
-export async function ownerSessionId(): Promise<string> {
-  return (await getSessionId()) ?? "owner";
 }

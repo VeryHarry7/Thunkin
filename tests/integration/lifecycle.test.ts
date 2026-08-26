@@ -77,7 +77,7 @@ describeDb("job lifecycle", () => {
     await truncateAll();
     resetMockProvider();
     setPortsForTesting({
-      keyResolver: { getKeyForSession: async () => KEY },
+      keyResolver: { getKey: async () => KEY },
     });
     vi.useFakeTimers({ toFake: ["Date"] });
     at(0);
@@ -121,7 +121,7 @@ describeDb("job lifecycle", () => {
     expect(result.claimed).toBe(1);
     expect(result.settled).toBe(1);
 
-    const settled = await getJob(job.id, SESSION);
+    const settled = await getJob(job.id);
     expect(settled?.status).toBe("ready");
   });
 
@@ -137,7 +137,7 @@ describeDb("job lifecycle", () => {
     await handleWebhook(job.falRequestId!);
     await handleWebhook(job.falRequestId!);
 
-    const settled = await getJob(job.id, SESSION);
+    const settled = await getJob(job.id);
     expect(settled?.status).toBe("ready");
 
     // One real completion means exactly one ready event, however many
@@ -181,13 +181,13 @@ describeDb("job lifecycle", () => {
     // Nine minutes in: still inside the ten-minute image ceiling.
     at(9 * 60_000);
     await sweep();
-    expect((await getJob(job.id, SESSION))?.status).not.toBe("expired");
+    expect((await getJob(job.id))?.status).not.toBe("expired");
 
     // Eleven minutes: past it.
     at(11 * 60_000);
     await sweep();
 
-    const expired = await getJob(job.id, SESSION);
+    const expired = await getJob(job.id);
     expect(expired?.status).toBe("expired");
     expect(expired?.errorCode).toBe("TIMEOUT");
   });
@@ -207,7 +207,7 @@ describeDb("job lifecycle", () => {
     at(3_000);
     await sweep();
 
-    const settled = await getJob(job.id, SESSION);
+    const settled = await getJob(job.id);
     expect(settled?.status).toBe("ready");
 
     const produced = await assetsForJobs([job.id]);
@@ -222,7 +222,7 @@ describeDb("job lifecycle", () => {
     // The client gets an opaque route, never a storage path.
     expect(asset.url).toBe(`/api/assets/${asset.id}`);
 
-    const row = await getAsset(asset.id, SESSION);
+    const row = await getAsset(asset.id);
     expect(row).not.toBeNull();
 
     const stored = await getStorage().get(row!.storageKey);
@@ -251,7 +251,7 @@ describeDb("job lifecycle", () => {
     at(3_000);
     await sweep();
 
-    const failed = await getJob(job.id, SESSION);
+    const failed = await getJob(job.id);
     expect(failed?.status).toBe("failed");
     expect(failed?.errorCode).toBe("INGEST_FAILED");
   });
@@ -293,7 +293,7 @@ describeDb("failure handling", () => {
     await truncateAll();
     resetMockProvider();
     setPortsForTesting({
-      keyResolver: { getKeyForSession: async () => KEY },
+      keyResolver: { getKey: async () => KEY },
     });
     vi.useFakeTimers({ toFake: ["Date"] });
     at(0);
@@ -314,7 +314,7 @@ describeDb("failure handling", () => {
     at(3_000);
     await sweep();
 
-    const failed = await getJob(job.id, SESSION);
+    const failed = await getJob(job.id);
     expect(failed?.status).toBe("failed");
     expect(failed?.errorCode).toBe("CONTENT_REJECTED");
     expect(failed?.errorMessage).toBeTruthy();
@@ -327,19 +327,19 @@ describeDb("failure handling", () => {
       params: { prompt: "a lighthouse at dusk" },
     });
 
-    // The visitor forgot their key between submit and completion.
-    setPortsForTesting({ keyResolver: { getKeyForSession: async () => null } });
+    // The key vanished between submit and completion (env change + restart).
+    setPortsForTesting({ keyResolver: { getKey: async () => null } });
 
     at(3_000);
     await sweep();
 
-    const failed = await getJob(job.id, SESSION);
+    const failed = await getJob(job.id);
     expect(failed?.status).toBe("failed");
     expect(failed?.errorCode).toBe("INVALID_KEY");
   });
 
   it("refuses to submit without a key, before creating provider work", async () => {
-    setPortsForTesting({ keyResolver: { getKeyForSession: async () => null } });
+    setPortsForTesting({ keyResolver: { getKey: async () => null } });
 
     await expect(
       submitJob({
@@ -372,11 +372,11 @@ describeDb("failure handling", () => {
     await sweep();
 
     // Further sweeps and late webhooks must not disturb a settled job.
-    const settled = await getJob(job.id, SESSION);
+    const settled = await getJob(job.id);
     await sweep();
     await handleWebhook(job.falRequestId!);
 
-    const after = await getJob(job.id, SESSION);
+    const after = await getJob(job.id);
     expect(after?.status).toBe(settled?.status);
     expect(after?.completedAt).toEqual(settled?.completedAt);
   });
@@ -397,7 +397,7 @@ describeDb("session scoping", () => {
     await truncateAll();
     resetMockProvider();
     setPortsForTesting({
-      keyResolver: { getKeyForSession: async () => KEY },
+      keyResolver: { getKey: async () => KEY },
     });
   });
 
@@ -405,29 +405,18 @@ describeDb("session scoping", () => {
     resetPorts();
   });
 
-  it("shows the same job to a different device", async () => {
-    /*
-     * The phone-and-laptop case. This is a single-user service behind a
-     * passphrase, so an unlocked caller is the owner no matter which browser
-     * they are in. Scoping reads by session cookie would give each device its
-     * own library, which reads as data loss rather than privacy.
-     */
-    const job = await submitJob({
-      sessionId: SESSION,
-      lookId: "quick-sketch",
-      params: { prompt: "a lighthouse at dusk" },
-    });
-
-    expect(await getJob(job.id, "sess_my_phone")).not.toBeNull();
-    expect(await getJob(job.id, SESSION)).not.toBeNull();
-  });
-
   it("still returns null for a job that does not exist", async () => {
     // Unscoped is not the same as unchecked — absence must stay absence.
-    expect(await getJob("job_does_not_exist", SESSION)).toBeNull();
+    expect(await getJob("job_does_not_exist")).toBeNull();
   });
 
   it("lists jobs made on other devices in one library", async () => {
+    /*
+     * The phone-and-laptop case. This is a single-user service behind a
+     * passphrase, so an unlocked caller is the owner no matter which browser
+     * they are in — reads take no session at all. The id is still written on
+     * each job as provenance.
+     */
     await submitJob({
       sessionId: "sess_laptop",
       lookId: "quick-sketch",
@@ -441,7 +430,7 @@ describeDb("session scoping", () => {
       idempotencyKey: "idem_phone",
     });
 
-    const seenFromPhone = await listJobs("sess_phone", { limit: 50 });
+    const seenFromPhone = await listJobs({ limit: 50 });
     expect(seenFromPhone.map((job) => job.params.prompt).sort()).toEqual([
       "made on the laptop",
       "made on the phone",
@@ -483,7 +472,7 @@ describeDb("orphans, cancellation, deletion", () => {
     await truncateAll();
     resetMockProvider();
     setPortsForTesting({
-      keyResolver: { getKeyForSession: async () => KEY },
+      keyResolver: { getKey: async () => KEY },
     });
     vi.useFakeTimers({ toFake: ["Date"] });
     at(0);
@@ -533,8 +522,8 @@ describeDb("orphans, cancellation, deletion", () => {
     const late = await sweep();
     expect(late.expired).toBe(2);
 
-    expect((await getJob(draft.job.id, SESSION))?.status).toBe("expired");
-    expect((await getJob(submitting.job.id, SESSION))?.status).toBe("expired");
+    expect((await getJob(draft.job.id))?.status).toBe("expired");
+    expect((await getJob(submitting.job.id))?.status).toBe("expired");
   });
 
   it("absorbs a cancel that lands during ingest", async () => {
@@ -550,9 +539,9 @@ describeDb("orphans, cancellation, deletion", () => {
     await applyTransition(job.id, { type: "PROVIDER_RUNNING" }, "system");
     await applyTransition(job.id, { type: "PROVIDER_COMPLETED" }, "system");
 
-    const outcome = await cancelJob(job.id, SESSION);
+    const outcome = await cancelJob(job.id);
     expect(outcome.status).toBe("ingesting");
-    expect((await getJob(job.id, SESSION))?.status).toBe("ingesting");
+    expect((await getJob(job.id))?.status).toBe("ingesting");
   });
 
   it("deleteJob removes the bytes and every row, in that order of importance", async () => {
@@ -563,11 +552,11 @@ describeDb("orphans, cancellation, deletion", () => {
     });
     at(3_000);
     await sweep();
-    expect((await getJob(job.id, SESSION))?.status).toBe("ready");
+    expect((await getJob(job.id))?.status).toBe("ready");
 
     const publics = (await assetsForJobs([job.id])).get(job.id) ?? [];
     expect(publics.length).toBeGreaterThan(0);
-    const asset = await getAsset(publics[0]!.id, SESSION);
+    const asset = await getAsset(publics[0]!.id);
     expect(asset).not.toBeNull();
     expect(await getStorage().get(asset!.storageKey)).not.toBeNull();
 
@@ -575,8 +564,8 @@ describeDb("orphans, cancellation, deletion", () => {
 
     // Bytes gone, rows gone, audit trail cascaded.
     expect(await getStorage().get(asset!.storageKey)).toBeNull();
-    expect(await getJob(job.id, SESSION)).toBeNull();
-    expect(await getAsset(publics[0]!.id, SESSION)).toBeNull();
+    expect(await getJob(job.id)).toBeNull();
+    expect(await getAsset(publics[0]!.id)).toBeNull();
     expect(await listJobEvents(job.id)).toHaveLength(0);
   });
 });

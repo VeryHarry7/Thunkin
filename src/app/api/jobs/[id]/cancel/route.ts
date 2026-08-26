@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { err, ok, toApiJob, type ApiJob, type ApiResult } from "@/lib/contracts";
-import { ownerSessionId } from "@/lib/session";
 import { ServiceError, cancelJob } from "@/lib/jobs/service";
 import { requireUnlocked } from "@/lib/auth/unlock";
 
@@ -14,10 +13,9 @@ export async function POST(
   if (locked) return locked;
 
   const { id } = await context.params;
-  const sessionId = await ownerSessionId();
 
   try {
-    return NextResponse.json(ok(toApiJob(await cancelJob(id, sessionId))));
+    return NextResponse.json(ok(toApiJob(await cancelJob(id))));
   } catch (error) {
     if (error instanceof ServiceError && error.code === "NOT_FOUND") {
       return NextResponse.json(err("NOT_FOUND", "No such job."), { status: 404 });

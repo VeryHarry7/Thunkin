@@ -95,14 +95,13 @@ export async function GET(
   const locked = await requireUnlocked();
   if (locked) return locked;
 
-  const sessionId = await requireSessionId();
   const url = new URL(request.url);
 
   const limit = Number(url.searchParams.get("limit") ?? 30);
   const beforeParam = url.searchParams.get("before");
   const before = beforeParam ? new Date(beforeParam) : undefined;
 
-  const jobs = await listJobs(sessionId, {
+  const jobs = await listJobs({
     limit: Number.isFinite(limit) ? limit : 30,
     ...(before && !Number.isNaN(before.getTime()) ? { before } : {}),
   });

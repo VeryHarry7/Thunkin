@@ -128,11 +128,7 @@ export async function createJob(
  * `sessionId` is accepted and ignored so callers stay unchanged and the seam
  * is obvious if this ever becomes multi-user again.
  */
-export async function getJob(
-  jobId: string,
-  _sessionId: string,
-  client: Db = db,
-): Promise<Job | null> {
+export async function getJob(jobId: string, client: Db = db): Promise<Job | null> {
   const rows = await client.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
 
   return rows[0] ? toJob(rows[0]) : null;
@@ -159,7 +155,6 @@ export async function getJobByRequestId(
  * library.
  */
 export async function listJobs(
-  _sessionId: string,
   options: { limit?: number; before?: Date } = {},
   client: Db = db,
 ): Promise<Job[]> {

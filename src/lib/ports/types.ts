@@ -50,14 +50,15 @@ export interface LookResolver {
 /**
  * Supplies the fal key a generation runs on.
  *
- * One server-side key for the whole service; the session id is accepted and
- * ignored, and remains only as the seam if this ever needs to be per-visitor
- * again. Implementations must never log, return, or serialize the key anywhere
- * other than straight into a provider call.
+ * One server-side key for the whole service. If this ever becomes
+ * per-visitor, adding a parameter here is a ten-minute change — cheaper than
+ * carrying an ignored one everywhere in the meantime. Implementations must
+ * never log, return, or serialize the key anywhere other than straight into a
+ * provider call.
  */
 export interface KeyResolver {
   /** Null when no key is configured — callers must return NO_KEY. */
-  getKeyForSession(sessionId: string): Promise<string | null>;
+  getKey(): Promise<string | null>;
 }
 
 /**

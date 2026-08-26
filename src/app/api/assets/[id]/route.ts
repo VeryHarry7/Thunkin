@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { ownerSessionId } from "@/lib/session";
 import { getAsset } from "@/lib/assets/repo";
 import { getStorage } from "@/lib/storage";
 import { requireUnlocked } from "@/lib/auth/unlock";
@@ -32,9 +31,8 @@ export async function GET(
   if (locked) return locked;
 
   const { id } = await context.params;
-  const sessionId = await ownerSessionId();
 
-  const asset = await getAsset(id, sessionId);
+  const asset = await getAsset(id);
   if (!asset) {
     return NextResponse.json({ ok: false }, { status: 404 });
   }

@@ -6,7 +6,6 @@ import {
   type ApiResult,
   type ApiJobWithAssets,
 } from "@/lib/contracts";
-import { ownerSessionId } from "@/lib/session";
 import { getJob } from "@/lib/jobs/repo";
 import { assetsForJobs } from "@/lib/assets/repo";
 import { deleteJob } from "@/lib/assets/delete";
@@ -29,9 +28,8 @@ export async function GET(
   if (locked) return locked;
 
   const { id } = await context.params;
-  const sessionId = await ownerSessionId();
 
-  const job = await getJob(id, sessionId);
+  const job = await getJob(id);
   if (!job) {
     return NextResponse.json(err("NOT_FOUND", "No such job."), { status: 404 });
   }
@@ -54,9 +52,8 @@ export async function DELETE(
   if (locked) return locked;
 
   const { id } = await context.params;
-  const sessionId = await ownerSessionId();
 
-  const job = await getJob(id, sessionId);
+  const job = await getJob(id);
   if (!job) {
     return NextResponse.json(err("NOT_FOUND", "No such job."), { status: 404 });
   }

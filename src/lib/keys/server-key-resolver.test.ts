@@ -22,20 +22,7 @@ afterEach(() => {
 describe("serverKeyResolver", () => {
   it("returns the configured key", async () => {
     const { serverKeyResolver } = await loadResolver({ FAL_KEY: "id:secret" });
-    await expect(serverKeyResolver.getKeyForSession("sess_a")).resolves.toBe(
-      "id:secret",
-    );
-  });
-
-  it("returns the same key for every session", async () => {
-    // The point of the re-scope: your phone and your laptop generate on one
-    // key, and the session id is recorded rather than used.
-    const { serverKeyResolver } = await loadResolver({ FAL_KEY: "id:secret" });
-    const [a, b] = await Promise.all([
-      serverKeyResolver.getKeyForSession("sess_phone"),
-      serverKeyResolver.getKeyForSession("sess_laptop"),
-    ]);
-    expect(a).toBe(b);
+    await expect(serverKeyResolver.getKey()).resolves.toBe("id:secret");
   });
 
   it("returns null rather than an empty string when no key is set", async () => {
@@ -45,6 +32,6 @@ describe("serverKeyResolver", () => {
       FAL_MODE: "mock",
       FAL_KEY: "",
     });
-    await expect(serverKeyResolver.getKeyForSession("sess_a")).resolves.toBeNull();
+    await expect(serverKeyResolver.getKey()).resolves.toBeNull();
   });
 });

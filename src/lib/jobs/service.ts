@@ -60,7 +60,7 @@ export async function submitJob(input: SubmitJobInput): Promise<Job> {
     throw new ServiceError("BAD_REQUEST", `Unknown look: ${input.lookId}`);
   }
 
-  const apiKey = await getKeyResolver().getKeyForSession(input.sessionId);
+  const apiKey = await getKeyResolver().getKey();
   if (!apiKey) {
     throw new ServiceError(
       "NO_KEY",
@@ -108,7 +108,7 @@ export async function submitJob(input: SubmitJobInput): Promise<Job> {
     // tell a client the job is never going to be polled.
     await schedulePoll(job.id, 0);
 
-    const scheduled = await getJob(job.id, input.sessionId);
+    const scheduled = await getJob(job.id);
     return scheduled ?? job;
   } catch (error) {
     const failure = toFailure(error);
@@ -131,7 +131,7 @@ export async function submitJob(input: SubmitJobInput): Promise<Job> {
 export async function advanceJob(job: Job, source: TransitionSource): Promise<Job> {
   if (!job.falRequestId) return job;
 
-  const apiKey = await getKeyResolver().getKeyForSession(job.sessionId);
+  const apiKey = await getKeyResolver().getKey();
   if (!apiKey) {
     // Without a key we can neither poll nor fetch a result, and the job would
     // sit non-terminal forever. Fail it rather than orphan it.
@@ -237,12 +237,12 @@ export async function handleWebhook(falRequestId: string): Promise<Job | null> {
   return advanceJob(job, "webhook");
 }
 
-export async function cancelJob(jobId: string, sessionId: string): Promise<Job> {
-  const job = await getJob(jobId, sessionId);
+export async function cancelJob(jobId: string): Promise<Job> {
+  const job = await getJob(jobId);
   if (!job) throw new ServiceError("NOT_FOUND", "No such job.");
 
   if (job.falRequestId) {
-    const apiKey = await getKeyResolver().getKeyForSession(sessionId);
+    const apiKey = await getKeyResolver().getKey();
     if (apiKey) {
       try {
         await getProvider().cancel(job.modelId, job.falRequestId, apiKey);
@@ -263,7 +263,7 @@ export async function cancelJob(jobId: string, sessionId: string): Promise<Job> 
     // and hand back the job as it stands; a terminal state a moment later is
     // the honest outcome.
     if (error instanceof IllegalTransition) {
-      const current = await getJob(job.id, sessionId);
+      const current = await getJob(job.id);
       return current ?? job;
     }
     throw error;

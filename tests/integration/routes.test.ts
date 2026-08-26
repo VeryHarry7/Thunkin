@@ -90,7 +90,7 @@ describeDb("the assets route", () => {
     await truncateAll();
     resetMockProvider();
     setPortsForTesting({
-      keyResolver: { getKeyForSession: async () => KEY },
+      keyResolver: { getKey: async () => KEY },
     });
     vi.useFakeTimers({ toFake: ["Date"] });
     at(0);
@@ -124,7 +124,7 @@ describeDb("the assets route", () => {
     expect(response.headers.get("content-disposition")).toContain("inline");
 
     // The bytes are the stored bytes — not a slab, not a truncation.
-    const row = await getAsset(asset.id, SESSION);
+    const row = await getAsset(asset.id);
     const stored = await getStorage().get(row!.storageKey);
     expect(body).toEqual(stored!.body);
   });
@@ -144,7 +144,7 @@ describeDb("the assets route", () => {
 
   it("reports missing bytes as our inconsistency, not a bad id", async () => {
     const { asset } = await readyJobWithAsset();
-    const row = await getAsset(asset.id, SESSION);
+    const row = await getAsset(asset.id);
     await getStorage().delete(row!.storageKey);
 
     const response = await getAssetRoute(
@@ -194,7 +194,7 @@ describeDb("the cancel route", () => {
     await truncateAll();
     resetMockProvider();
     setPortsForTesting({
-      keyResolver: { getKeyForSession: async () => KEY },
+      keyResolver: { getKey: async () => KEY },
     });
     vi.useFakeTimers({ toFake: ["Date"] });
     at(0);
