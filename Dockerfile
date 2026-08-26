@@ -34,6 +34,9 @@ COPY --from=build /app/public ./public
 # schema's TypeScript.
 COPY package.json pnpm-lock.yaml next.config.ts tsconfig.json drizzle.config.ts ./
 COPY src/lib/db ./src/lib/db
+# The committed migration journal — without it `db:migrate` finds nothing to
+# apply and the boot below fails on a fresh database.
+COPY drizzle ./drizzle
 COPY scripts ./scripts
 
 # Storage is a mounted volume in Compose; create it so a bare `docker run`
@@ -42,6 +45,8 @@ RUN mkdir -p .storage
 
 EXPOSE 3000
 
-# Push the schema, then serve. `db:push` is idempotent, so this is safe on
-# every restart and means there is no separate migration step to forget.
-CMD ["sh", "-c", "pnpm db:push --force && pnpm start -H 0.0.0.0"]
+# Apply committed migrations, then serve. Migrations are ordered and
+# idempotent, so this is safe on every restart — and unlike the old
+# `db:push --force`, it can never decide on its own to drop a column from a
+# database holding real generations.
+CMD ["sh", "-c", "pnpm db:migrate && pnpm start -H 0.0.0.0"]

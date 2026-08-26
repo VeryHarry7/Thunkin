@@ -131,6 +131,23 @@ tar czf storage.tar.gz .storage/
 
 Under Compose those live in the `db-data` and `storage` volumes.
 
+## Schema changes
+
+Committed migrations live in `drizzle/`; the Docker image applies them on
+every boot (`pnpm db:migrate`), which is idempotent and — unlike `db:push` —
+can never decide on its own to drop a column from a database holding real
+generations. Changing the schema is: edit `src/lib/db/tables/`, run
+`pnpm db:generate`, commit the new file in `drizzle/`.
+
+`pnpm db:push` remains the quick path for local development against the
+throwaway dev database, where nothing is worth keeping.
+
+One-time note for a database that predates the migration journal (created via
+`db:push` before `drizzle/` existed): the baseline migration would try to
+re-create tables that already exist. On a pre-live database the easy answer is
+to start fresh; if it already holds generations you care about, `pg_dump`
+first, or mark the baseline as applied by hand before booting.
+
 ## How it fits together
 
 ```
