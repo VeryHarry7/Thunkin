@@ -41,5 +41,4 @@ describe("serverKeyResolver", () => {
     });
     await expect(serverKeyResolver.getKey()).resolves.toEqual(expect.any(String));
   });
-
 });
