@@ -186,22 +186,6 @@ export function createFalProvider(fetchImpl: FetchLike = fetch): Provider {
         throw error;
       }
     },
-
-    async verifyKey(apiKey: string): Promise<boolean> {
-      if (!/^[A-Za-z0-9-]{8,}:[A-Za-z0-9]{8,}$/.test(apiKey)) return false;
-      try {
-        // Any authenticated round-trip proves the key. A status lookup for a
-        // nonexistent request is the cheapest one: it never queues work.
-        await call(`${QUEUE_BASE}/fal-ai/flux/requests/verify-probe/status`, apiKey);
-        return true;
-      } catch (error) {
-        if (error instanceof ProviderError) {
-          // Reaching auth and being told "no such request" means the key worked.
-          return error.code !== "INVALID_KEY";
-        }
-        return false;
-      }
-    },
   };
 }
 

@@ -150,12 +150,6 @@ describe("mock provider key handling", () => {
       }),
     ).rejects.toThrow(ProviderError);
   });
-
-  it("accepts a key in fal's id:secret shape and rejects anything else", async () => {
-    expect(await mockProvider.verifyKey(KEY)).toBe(true);
-    expect(await mockProvider.verifyKey("not-a-key")).toBe(false);
-    expect(await mockProvider.verifyKey("")).toBe(false);
-  });
 });
 
 describe("mock provider cancellation", () => {

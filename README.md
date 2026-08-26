@@ -145,8 +145,9 @@ src/app/             studio, library, unlock, API routes
 ```
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how the pieces connect and why
-- [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) — the original plan, most of it
-  now deliberately abandoned
+- [`docs/BACKLOG.md`](docs/BACKLOG.md) — decisions made, waiting on the work
+- [`docs/archive/PROJECT_PLAN.md`](docs/archive/PROJECT_PLAN.md) — the original
+  plan, kept as history
 
 ## Things worth knowing
 

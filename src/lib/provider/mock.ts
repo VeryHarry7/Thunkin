@@ -189,12 +189,6 @@ export const mockProvider: Provider = {
   async cancel(_endpoint, requestId): Promise<void> {
     requests.delete(requestId);
   },
-
-  async verifyKey(apiKey: string): Promise<boolean> {
-    // Mirrors fal's key shape (`key_id:key_secret`) so the entry form's
-    // validation is exercised rather than bypassed in development.
-    return /^[A-Za-z0-9-]{8,}:[A-Za-z0-9]{8,}$/.test(apiKey);
-  },
 };
 
 /** Clears in-flight mock state. Tests call this between cases. */

@@ -3,8 +3,8 @@ import type { GenerationParams, JobErrorCode, JobKind } from "@/lib/contracts";
 /**
  * The provider boundary.
  *
- * FROZEN CONTRACT — AGENT-04 implements the `fal` adapter against this shape.
- * Everything above the boundary (job machine, routes, UI) is written against
+ * The provider boundary. Everything above it (job machine, routes, UI) is
+ * written against
  * the interface, never against fal directly, so the mock is a true stand-in
  * and a second provider stays a small change.
  */
@@ -81,7 +81,4 @@ export interface Provider {
   status(endpoint: string, requestId: string, apiKey: string): Promise<StatusResult>;
   result(endpoint: string, requestId: string, apiKey: string): Promise<ResultPayload>;
   cancel(endpoint: string, requestId: string, apiKey: string): Promise<void>;
-
-  /** Cheap round-trip used to verify a key at entry. */
-  verifyKey(apiKey: string): Promise<boolean>;
 }

@@ -24,9 +24,6 @@ function memoryStorage() {
     async delete(key) {
       files.delete(key);
     },
-    async exists(key) {
-      return files.has(key);
-    },
   };
   return { port, files };
 }

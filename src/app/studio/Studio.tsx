@@ -11,7 +11,8 @@ import s from "./studio.module.css";
 /**
  * The create surface.
  *
- * Progress comes from polling `GET /api/jobs` — SSE is AGENT-07. That read
+ * Progress comes from polling `GET /api/jobs` — no push channel, on
+ * purpose: on a LAN with one user the difference is imperceptible. That read
  * triggers the server's piggyback sweep, so polling is what actually advances
  * jobs today rather than merely observing them.
  */

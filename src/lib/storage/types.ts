@@ -1,14 +1,15 @@
 /**
  * The storage boundary.
  *
- * Same pattern as `src/lib/ports/` and for the same reason: no cloud
- * credentials exist yet, and blocking a visible product on procuring them would
- * be the wrong trade. The local-disk implementation is honest about being
- * development-only; the R2 implementation is this interface with a different
- * body, and nothing above it changes.
+ * Local disk under `.storage/` is the real implementation, not a stand-in:
+ * one long-lived process on one machine is precisely the case a filesystem
+ * serves well. The port stays because it costs nothing and is the seam if
+ * this ever moves to object storage — a second implementation is this
+ * interface with a different body, and nothing above it changes.
  */
 export interface StoragePort {
-  readonly name: "local" | "r2";
+  /** Identifies which implementation is live, for logs. */
+  readonly name: string;
 
   /** Writes bytes under `key`, overwriting. */
   put(key: string, body: Uint8Array, mime: string): Promise<void>;
@@ -17,6 +18,4 @@ export interface StoragePort {
   get(key: string): Promise<{ body: Uint8Array; mime: string } | null>;
 
   delete(key: string): Promise<void>;
-
-  exists(key: string): Promise<boolean>;
 }

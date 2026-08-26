@@ -1,9 +1,9 @@
 /**
- * The API between agents.
+ * The shared vocabulary.
  *
- * Every workstream imports its shared vocabulary from here — `@/lib/contracts`
- * — and nothing imports from the individual files directly. Changing an
- * exported shape is a cross-agent break: open docs/handoffs/ before you do.
+ * Everything imports from here — `@/lib/contracts` — and nothing imports from
+ * the individual files directly. An exported shape is used across machine,
+ * routes, and UI at once, so change these deliberately.
  */
 export * from "./job";
 export * from "./asset";

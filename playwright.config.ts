@@ -22,7 +22,7 @@ type Use = NonNullable<PlaywrightTestConfig["use"]>;
  * Device profiles default to WebKit for Apple hardware, but Chromium is the
  * only engine available here. We keep the viewport, touch behaviour and user
  * agent from the profile and run it under Chromium — enough to catch the
- * layout and ergonomics regressions AGENT-09's checklist cares about. Real
+ * layout and ergonomics regressions the phone-first goal cares about. Real
  * Safari rendering bugs need a manual pass; that is a known limitation.
  */
 function profile(device: Use): Use {
@@ -47,7 +47,7 @@ export default defineConfig({
    * matrix was most of the suite's cost. They run on desktop only.
    *
    * UI specs run everywhere, because layout and ergonomics are exactly what a
-   * viewport changes. That matrix is AGENT-09's checklist made executable.
+   * viewport changes. That matrix is the phone-ergonomics checklist made executable.
    */
   projects: [
     {

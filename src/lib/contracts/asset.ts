@@ -4,8 +4,7 @@ import { ApiJob, JobKind } from "./job";
 /**
  * A generated result, re-hosted in our own storage.
  *
- * FROZEN CONTRACT — AGENT-05 owns the ingest that populates these; AGENT-06
- * and AGENT-08 render them. The `sourceUrl` is kept only for debugging: it
+ * The `sourceUrl` is kept only for debugging: it
  * points at the provider's expiring URL and must never be rendered.
  */
 export const Asset = z.object({
@@ -16,8 +15,6 @@ export const Asset = z.object({
 
   /** Object-storage key for the full-resolution result. */
   storageKey: z.string(),
-  /** Object-storage key for the poster frame. Video only. */
-  posterKey: z.string().nullable(),
   /**
    * Tiny base64 placeholder, inlined into HTML so a tile paints before any
    * bytes arrive. Kept small enough that it costs less than the request saves.
@@ -49,7 +46,6 @@ export const PublicAsset = z.object({
   id: z.string(),
   kind: JobKind,
   url: z.string(),
-  posterUrl: z.string().nullable(),
   blurPlaceholder: z.string().nullable(),
   width: z.number().int().positive(),
   height: z.number().int().positive(),

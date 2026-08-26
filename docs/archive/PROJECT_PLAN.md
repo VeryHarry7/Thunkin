@@ -1,3 +1,8 @@
+> **Historical.** This plan describes the abandoned multi-user, bring-your-own-key
+> product. The service that actually exists is a private single-user LAN app —
+> see `docs/ARCHITECTURE.md` for what is true now. Kept for the record of why
+> decisions were shaped the way they were; do not build against it.
+
 # Thunkin — AI Photo & Video Studio: Project Plan
 
 ## Context

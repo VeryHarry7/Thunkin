@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   ApiJob,
-  ContractViolation,
   GenerationParams,
   Job,
   JobStatus,
@@ -12,7 +11,6 @@ import {
   issuesToFields,
   ok,
   toApiJob,
-  parseOrThrow,
 } from "./index";
 import { z } from "zod";
 
@@ -49,24 +47,6 @@ describe("GenerationParams", () => {
   it("rejects a negative seed, which no model accepts", () => {
     const result = GenerationParams.safeParse({ prompt: "x", seed: -1 });
     expect(result.success).toBe(false);
-  });
-});
-
-describe("parseOrThrow", () => {
-  it("returns parsed data on success", () => {
-    expect(parseOrThrow(z.object({ a: z.number() }), { a: 1 })).toEqual({ a: 1 });
-  });
-
-  it("throws a labelled ContractViolation carrying the issues", () => {
-    try {
-      parseOrThrow(z.object({ a: z.number() }), { a: "no" }, "webhook payload");
-      expect.unreachable("should have thrown");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ContractViolation);
-      const violation = error as ContractViolation;
-      expect(violation.message).toContain("webhook payload");
-      expect(violation.issues).toHaveLength(1);
-    }
   });
 });
 

@@ -12,12 +12,12 @@ import type { LookResolver } from "@/lib/ports";
  * Every id below was checked against fal's live model catalogue on 2026-08-25.
  * They have NOT been exercised against the live API — this project runs on
  * FAL_MODE=mock and no key has been used yet. Treat the ids as verified-listed
- * but unverified-working until the live smoke described in docs/PROJECT_PLAN.md.
+ * but unverified-working until `scripts/smoke-live.mjs` runs on a real key.
  *
  * Deliberately excluded: Sora 2, whose API shuts down 2026-09-24.
  *
- * This is a thin slice of AGENT-02's full roster: four looks spanning both
- * kinds and the speed/quality range, enough to prove the picker and the
+ * Four looks spanning both kinds and the speed/quality range, enough to
+ * prove the picker and the
  * param-adaptation path. Adding a model is a single entry here.
  */
 

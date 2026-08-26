@@ -227,30 +227,6 @@ describe("cancel", () => {
   });
 });
 
-describe("verifyKey", () => {
-  it("rejects a malformed key without a network call", async () => {
-    const { impl, calls } = stubFetch(jsonResponse({}));
-    expect(await createFalProvider(impl).verifyKey("not-a-key")).toBe(false);
-    expect(calls).toHaveLength(0);
-  });
-
-  it("accepts a key that reaches the service", async () => {
-    const { impl } = stubFetch(jsonResponse({ status: "COMPLETED" }));
-    expect(await createFalProvider(impl).verifyKey(KEY)).toBe(true);
-  });
-
-  it("accepts a key even when the probe request is not found", async () => {
-    // Reaching auth and being told "no such request" proves the key works.
-    const { impl } = stubFetch(jsonResponse({ detail: "not found" }, 404));
-    expect(await createFalProvider(impl).verifyKey(KEY)).toBe(true);
-  });
-
-  it("rejects a key the service refuses", async () => {
-    const { impl } = stubFetch(jsonResponse({ detail: "unauthorized" }, 401));
-    expect(await createFalProvider(impl).verifyKey(KEY)).toBe(false);
-  });
-});
-
 describe("toResultPayload", () => {
   it("reads an image result", () => {
     const payload = toResultPayload({

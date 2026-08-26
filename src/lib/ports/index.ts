@@ -8,15 +8,12 @@ export * from "./types";
 /**
  * Port resolution.
  *
- * Each accessor returns the dev implementation today. When a sibling agent
- * lands, it changes **one return statement here** and nothing else in the
- * codebase moves:
- *
- *   getLookResolver → AGENT-02's curated registry
- *   getIngestPort   → AGENT-05's asset pipeline
+ * Every port has its real implementation wired here, and this is the only
+ * file that decides what is wired — one place to read to know what actually
+ * runs.
  *
  * Overrides exist for tests only. Production code must always go through the
- * accessors so there is a single place to audit what is wired.
+ * accessors so that single place stays the truth.
  */
 
 let lookResolver: LookResolver = registry;

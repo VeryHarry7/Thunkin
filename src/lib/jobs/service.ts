@@ -122,8 +122,8 @@ export async function submitJob(input: SubmitJobInput): Promise<Job> {
  * Advances a job by asking the provider where it is.
  *
  * The single path both the webhook and the sweeper take. `source` is recorded
- * on the event so AGENT-12 can watch the webhook-versus-sweeper ratio — a
- * rising sweeper share is how a broken webhook announces itself.
+ * on the event, so the webhook-versus-sweeper ratio in job_events is how a
+ * broken webhook would announce itself.
  */
 export async function advanceJob(job: Job, source: TransitionSource): Promise<Job> {
   if (!job.falRequestId) return job;

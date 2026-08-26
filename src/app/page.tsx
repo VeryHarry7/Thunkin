@@ -13,8 +13,8 @@ export const metadata = {
  * The hero is the output. One line of type, one way in, and no value
  * proposition to read — if the pictures do not convince, prose will not.
  *
- * The wall currently shows registry samples; once a session has real
- * generations, AGENT-08's showcase replaces them.
+ * The wall currently shows registry samples; showing your own recent
+ * generations instead is a noted backlog item (docs/BACKLOG.md).
  */
 export default function HomePage() {
   // Doubled so the grid fills at every breakpoint without a gap at the edge.

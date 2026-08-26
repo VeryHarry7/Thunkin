@@ -3,7 +3,6 @@ import {
   EXPIRY_CEILING_MS,
   MAX_POLL_INTERVAL_MS,
   hasExpired,
-  msUntilExpiry,
   nextPollAt,
   pollDelayMs,
 } from "./backoff";
@@ -77,21 +76,5 @@ describe("expiry ceilings", () => {
   it("falls back to creation when a job was never submitted", () => {
     const createdAt = new Date(NOW.getTime() - 30 * 60_000);
     expect(hasExpired({ kind: "image", submittedAt: null, createdAt }, NOW)).toBe(true);
-  });
-});
-
-describe("msUntilExpiry", () => {
-  it("reports the remaining headroom", () => {
-    const submittedAt = new Date(NOW.getTime() - 60_000);
-    expect(
-      msUntilExpiry({ kind: "image", submittedAt, createdAt: submittedAt }, NOW),
-    ).toBe(540_000);
-  });
-
-  it("clamps to zero rather than going negative", () => {
-    const submittedAt = new Date(NOW.getTime() - 60 * 60_000);
-    expect(
-      msUntilExpiry({ kind: "image", submittedAt, createdAt: submittedAt }, NOW),
-    ).toBe(0);
   });
 });

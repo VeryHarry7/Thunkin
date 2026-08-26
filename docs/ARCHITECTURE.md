@@ -1,9 +1,10 @@
 # Architecture
 
-How Thunkin fits together and why. `docs/PROJECT_PLAN.md` is the original
-fourteen-agent plan for a public product; most of it was deliberately abandoned
-when this became a private, single-user service. Where the two disagree, this
-file is current.
+How Thunkin fits together and why. `docs/archive/PROJECT_PLAN.md` is the
+original fourteen-agent plan for a public product, kept as history; most of it
+was deliberately abandoned when this became a private, single-user service.
+This file is what is true now, and `docs/BACKLOG.md` holds the decisions made
+but not yet built.
 
 ---
 

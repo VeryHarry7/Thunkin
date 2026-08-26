@@ -4,7 +4,7 @@ import { JobKind } from "./job";
 /**
  * How a model is described to the rest of the app.
  *
- * FROZEN CONTRACT — AGENT-02 fills the registry with these. The point of the
+ * The registry is made of these. The point of the
  * shape is the `look` field: the UI sells a visual direction, and the fal
  * endpoint id is an implementation detail surfaced only under Advanced.
  */

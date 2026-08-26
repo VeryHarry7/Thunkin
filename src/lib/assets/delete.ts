@@ -18,7 +18,6 @@ export async function deleteJob(jobId: string, client: Db = db): Promise<boolean
   for (const row of rows) {
     // Best effort: a missing file should not block removing the record of it.
     await storage.delete(row.storageKey).catch(() => {});
-    if (row.posterKey) await storage.delete(row.posterKey).catch(() => {});
   }
 
   // assets and job_events both cascade from jobs.

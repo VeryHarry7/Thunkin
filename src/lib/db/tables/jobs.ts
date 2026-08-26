@@ -17,7 +17,7 @@ import type {
 } from "@/lib/contracts";
 
 /**
- * Job tables. Owned by AGENT-04.
+ * Job tables.
  *
  * `status` and `errorCode` are text columns typed through `$type<>()` rather
  * than Postgres enums: the contract in `@/lib/contracts` is the single source
@@ -82,8 +82,8 @@ export const jobs = pgTable(
 
 /**
  * The audit trail. Every status change appends one row, recording which
- * subsystem drove it — the evidence that answers "why did this job move?" and
- * the source of AGENT-12's webhook-versus-sweeper ratio.
+ * subsystem drove it — the evidence that answers "why did this job move?",
+ * and the source of the webhook-versus-sweeper ratio.
  */
 export const jobEvents = pgTable(
   "job_events",

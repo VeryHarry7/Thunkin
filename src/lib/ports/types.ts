@@ -16,7 +16,6 @@ import type { ProviderOutput } from "@/lib/provider";
 /**
  * Turns the look a visitor picked into a concrete model and a provider payload.
  *
- * Owned by AGENT-02.
  */
 export interface LookResolver {
   /** Null when the look id is unknown — callers must treat that as a 400. */
@@ -49,7 +48,7 @@ export interface KeyResolver {
  * Copies a finished result out of the provider's expiring URLs and into our
  * own storage.
  *
- * Owned by AGENT-05. Throwing here fails the job with `INGEST_FAILED`, which is
+ * Throwing here fails the job with `INGEST_FAILED`, which is
  * deliberate: a result we could not keep is not a result we should show.
  */
 export interface IngestPort {

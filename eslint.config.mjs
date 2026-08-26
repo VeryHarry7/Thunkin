@@ -42,8 +42,8 @@ export default tseslint.config(
         "error",
         { prefer: "type-imports", fixStyle: "inline-type-imports" },
       ],
-      // The vault decrypts into a string; an accidental `any` there would
-      // silently defeat the redaction tests. Keep it an error everywhere.
+      // An accidental `any` anywhere near the API key or the passphrase would
+      // quietly defeat the type system's help. Keep it an error everywhere.
       "@typescript-eslint/no-explicit-any": "error",
       eqeqeq: ["error", "smart"],
       "no-console": ["warn", { allow: ["warn", "error"] }],

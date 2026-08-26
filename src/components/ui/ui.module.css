@@ -1,4 +1,4 @@
-/* Primitives for the vertical slice. AGENT-01's full pass adds the rest. */
+/* The primitive set. Grown on demand, never speculatively. */
 
 /* ============ Button ============ */
 .button {
@@ -221,12 +221,6 @@
 .tileSkeleton {
   position: absolute;
   inset: 0;
-}
-
-/* ============ Skeleton ============ */
-.skeleton {
-  border-radius: var(--r-2);
-  background: var(--surface-2);
 }
 
 /* ============ ErrorState ============ */

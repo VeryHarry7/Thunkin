@@ -1,5 +1,5 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 import type { StoragePort } from "./types";
 
 /**
@@ -63,16 +63,6 @@ export const localStorage: StoragePort = {
     await rm(pathFor(key), { force: true });
     await rm(metaPathFor(key), { force: true });
   },
-
-  async exists(key) {
-    try {
-      await readFile(pathFor(key));
-      return true;
-    } catch {
-      return false;
-    }
-  },
 };
 
 export const LOCAL_STORAGE_ROOT = ROOT;
-export { join as joinStorageKey };

@@ -54,13 +54,3 @@ export function hasExpired(
   const start = job.submittedAt ?? job.createdAt;
   return now.getTime() - start.getTime() > EXPIRY_CEILING_MS[job.kind];
 }
-
-/** Milliseconds remaining before expiry. Zero once past the ceiling. */
-export function msUntilExpiry(
-  job: { kind: JobKind; submittedAt: Date | null; createdAt: Date },
-  now: Date = new Date(),
-): number {
-  const start = job.submittedAt ?? job.createdAt;
-  const deadline = start.getTime() + EXPIRY_CEILING_MS[job.kind];
-  return Math.max(0, deadline - now.getTime());
-}

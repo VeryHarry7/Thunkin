@@ -4,8 +4,9 @@ import s from "./ui.module.css";
 /**
  * The primitives the vertical slice needs, and no more.
  *
- * AGENT-01's full pass adds Sheet, Tabs, Tooltip, Toast, Dialog, Progress,
- * EmptyState and MediaLightbox, plus the kitchen-sink route. Everything here
+ * Deliberately small; grown on demand. Still missing, in likely order of
+ * need: TextInput/NumberInput, Dialog/Sheet, Select, Toast, MediaLightbox —
+ * add them when a feature actually wants one, not before. Everything here
  * reads its colours from the token layer — no component defines a hex value.
  */
 
@@ -173,26 +174,6 @@ export function MediaTile({
 
       {overlay}
     </div>
-  );
-}
-
-/* ============================ Skeleton ============================== */
-
-export function Skeleton({
-  height = 16,
-  width = "100%",
-  className,
-}: {
-  height?: number | string;
-  width?: number | string;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cx(s.skeleton, "thunkin-shimmer", className)}
-      style={{ height, width }}
-      aria-hidden="true"
-    />
   );
 }
 

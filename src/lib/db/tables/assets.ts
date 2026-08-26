@@ -3,7 +3,7 @@ import { jobs } from "./jobs";
 import type { JobKind } from "@/lib/contracts";
 
 /**
- * Assets. Owned by AGENT-05.
+ * Assets.
  *
  * One row per produced file, after it has been copied into our own storage.
  * A row existing means the bytes are ours and will still be there tomorrow —
@@ -22,7 +22,6 @@ export const assets = pgTable(
     /** Opaque storage key. Never leaves the server — see PublicAsset. */
     storageKey: text("storage_key").notNull(),
     /** Poster frame for video. */
-    posterKey: text("poster_key"),
     /**
      * Tiny base64 data URI, inlined into HTML so a tile paints before any bytes
      * arrive. Kept small enough that it costs less than the request it saves.

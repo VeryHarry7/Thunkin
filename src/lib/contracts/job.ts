@@ -3,9 +3,8 @@ import { z } from "zod";
 /**
  * The job lifecycle.
  *
- * FROZEN CONTRACT — AGENT-04 owns the transition function that moves a job
- * between these states, but the state names themselves are shared vocabulary.
- * Changing one is a cross-agent break: raise it in docs/handoffs/ first.
+ * The state names are shared vocabulary across machine, sweeper, routes and
+ * UI — changing one touches all of them, so change deliberately.
  *
  *   draft → submitting → queued → running → ingesting → ready
  *                    ↘         ↘        ↘         ↘
@@ -76,7 +75,7 @@ export type JobKind = z.infer<typeof JobKind>;
 /**
  * Normalized generation input.
  *
- * One shape goes in; AGENT-02's registry adapts it into whatever payload each
+ * One shape goes in; the registry adapts it into whatever payload each
  * model actually wants. The UI never constructs a model-specific body.
  */
 export const GenerationParams = z.object({

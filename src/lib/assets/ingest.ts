@@ -181,7 +181,6 @@ export async function ingestOutputs(
       sessionId: job.sessionId,
       kind: job.kind,
       storageKey,
-      posterKey: null,
       blurPlaceholder: await blurPlaceholder(body),
       mime,
       width: size.width,

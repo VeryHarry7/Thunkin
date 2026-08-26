@@ -40,11 +40,9 @@ export async function GET(
   }
 
   const params = new URL(request.url).searchParams;
-  const wantsPoster = params.get("poster") === "1";
   const wantsDownload = params.get("download") === "1";
-  const key = wantsPoster && asset.posterKey ? asset.posterKey : asset.storageKey;
 
-  const stored = await getStorage().get(key);
+  const stored = await getStorage().get(asset.storageKey);
   if (!stored) {
     // The row says it exists but the bytes are gone — a real inconsistency,
     // worth a distinct status so it shows up in logs as ours, not a bad id.

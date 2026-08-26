@@ -16,8 +16,8 @@ const globalForDb = globalThis as unknown as {
 
 function createClient() {
   return postgres(env.DATABASE_URL, {
-    // Route handlers are short-lived; a small pool is plenty and keeps us well
-    // under the connection ceiling of a serverless Postgres.
+    // Route handlers are short-lived and there is exactly one user; a small
+    // pool is plenty for the Postgres running on the same box.
     max: env.NODE_ENV === "production" ? 10 : 3,
     idle_timeout: 20,
     connect_timeout: 10,

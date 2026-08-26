@@ -15,7 +15,6 @@ export function toPublicAsset(row: AssetRow): PublicAsset {
     id: row.id,
     kind: row.kind,
     url: `/api/assets/${row.id}`,
-    posterUrl: row.posterKey ? `/api/assets/${row.id}?poster=1` : null,
     blurPlaceholder: row.blurPlaceholder,
     width: row.width,
     height: row.height,
